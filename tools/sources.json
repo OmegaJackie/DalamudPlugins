@@ -1,0 +1,62 @@
+{
+  "_comment": [
+    "Source of truth for pluginmaster.json. Run tools/Update-PluginMaster.ps1 after changing this.",
+    "",
+    "Hosted 'dist'     -> built from Project, zip committed to dist/, metadata read from the",
+    "                     manifest DalamudPackager generates next to the build output.",
+    "Hosted 'external' -> lives in its own repo with its own releases. Metadata is pulled live",
+    "                     from that repo's repo.json, so the plugin stays its own source of truth."
+  ],
+
+  "RawBase": "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist",
+  "HomeRepo": "https://github.com/OmegaJackie/DalamudPlugins",
+
+  "Plugins": [
+    {
+      "InternalName": "Relicable",
+      "Hosted": "external",
+      "Manifest": "https://raw.githubusercontent.com/OmegaJackie/Relicable/main/repo.json",
+      "ReleaseRepo": "OmegaJackie/Relicable"
+    },
+    {
+      "InternalName": "CineSync",
+      "Hosted": "external",
+      "Manifest": "https://raw.githubusercontent.com/OmegaJackie/CineSync/main/repo.json",
+      "ReleaseRepo": "OmegaJackie/CineSync"
+    },
+    {
+      "InternalName": "PlayerTrack",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\PlayerTrack-IPC\\PlayerTrack.Plugin\\PlayerTrack.Plugin.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/PlayerTrack-IPC",
+      "CategoryTags": [ "utility" ],
+      "Changelog": "Fork of Infiziert90/PlayerTrack with an IPC surface for other plugins."
+    },
+    {
+      "InternalName": "ChatAnywhere",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\ChatAnywhere-FL\\ChatAnywhere.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/ChatAnywhere-FL",
+      "CategoryTags": [ "utility" ],
+      "Changelog": "Fork of twelvehouse/ChatAnywhere."
+    },
+    {
+      "InternalName": "BozjaBuddyReborn",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\Bozja Buddy Reborn\\BozjaBuddyReborn\\BozjaBuddyReborn.csproj",
+      "CategoryTags": [ "utility" ]
+    },
+    {
+      "InternalName": "LineMeUp",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\Line me up\\LineMeUp\\LineMeUp.csproj",
+      "CategoryTags": [ "utility" ]
+    },
+    {
+      "InternalName": "SellJunk",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\SellJunk\\SellJunk\\SellJunk.csproj",
+      "CategoryTags": [ "utility" ]
+    }
+  ]
+}

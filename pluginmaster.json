@@ -1,0 +1,216 @@
+[
+    {
+        "Author":  "Relicable contributors",
+        "Name":  "Relicable",
+        "InternalName":  "Relicable",
+        "AssemblyVersion":  "1.5.4.5",
+        "TestingAssemblyVersion":  "1.5.4.5",
+        "Changelog":  "1.5.4.5 - everything since 1.5.3.2:\n\nCombat: engage range is measured to the target\u0027s hitbox edge everywhere, so it no longer stands just out of reach re-approaching forever; ranged jobs and casters hold at about 15 yalms instead of walking into melee; it fights back when attacked while waiting, walking, or staging, chases adds that pull from range, and no longer hard-targets a friendly healer as an \u0027aggressor\u0027.\n\nRelic: taking the relic off is now a weapon swap (a main hand can never be empty), so upgrades and hand-ins no longer silently stall; a Paladin\u0027s Holy Shield is put back in the right hand; the gear set you are wearing follows the relic through each upgrade.\n\nBooks and FATEs: a FATE already up in your zone runs first instead of being flown away from; an unreachable FATE target is skipped instead of hanging the run; pick which kinds of book work run (Enemies, Leves, Dungeons, FATEs) or jump a specific entry with Run next.\n\nAlso: Aetheryte Tickets can pay for expensive teleports (threshold in /relic config), the Braves shopping list can pull materials from your retainers, and A Treasured Mother reports to Ealdwine at Swiftperch, not Brangwine.",
+        "Punchline":  "Automate the ARR Zodiac relic line (Early Alpha, access code required)",
+        "Description":  "EARLY ALPHA - an access code from the developer is required to run this plugin; it will not start without one.\n\nData-driven automation engine for the ARR Zodiac relic line (A Relic Reborn through Zodiac Zeta). It plans and drives the stage objectives - Atma FATE farming, Animus book leves and dungeons, Novus materia/scroll planning, Nexus light farming, and the Jalzahn/Gerolt upgrade turn-ins - by orchestrating other plugins over IPC rather than replacing them.\n\nRequires these companion plugins, installed and working: vnavmesh (movement), BossMod Reborn, Rotation Solver Reborn or Wrath Combo (combat), Lifestream (aetheryte travel), TextAdvance (dialogue), and AutoDuty (dungeons). The Dependencies tab in /relic config shows live status for each.\n\nUSE AT YOUR OWN RISK: automating movement and combat is botting under the FINAL FANTASY XIV User Agreement, and Square Enix suspends and terminates accounts for it. The risk is highest for the open-world stages (Atma, Animus, Nexus, Zeta), which run in shared content where other players can observe and report you. Neither this plugin nor its authors can reduce that risk or protect you from it.\n\nThis is alpha software that takes control of your character for long unattended sessions. It is incomplete, it has rough edges, and stages will occasionally stall and need manual help. Do not run it unattended if that is not acceptable to you. Bug reports should include /xllog output with \u0027Enable debug log\u0027 turned on in /relic config.",
+        "ApplicableVersion":  "any",
+        "RepoUrl":  "https://github.com/OmegaJackie/Relicable",
+        "IconUrl":  "https://raw.githubusercontent.com/OmegaJackie/Relicable/main/icon.png",
+        "Tags":  [
+                     "relic",
+                     "zodiac",
+                     "automation",
+                     "arr",
+                     "atma",
+                     "animus",
+                     "novus",
+                     "nexus",
+                     "zeta"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "DalamudApiLevel":  15,
+        "LoadRequiredState":  0,
+        "LoadSync":  false,
+        "CanUnloadAsync":  false,
+        "IsHide":  false,
+        "IsTestingExclusive":  true,
+        "AcceptsFeedback":  false,
+        "FeedbackMessage":  "Please report issues on GitHub: https://github.com/OmegaJackie/Relicable/issues - never paste your Early Alpha access code into a report.",
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/Relicable/releases/latest/download/Relicable.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/Relicable/releases/latest/download/Relicable.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/Relicable/releases/latest/download/Relicable.zip"
+    },
+    {
+        "Author":  "OmegaJackie",
+        "Name":  "CineSync",
+        "InternalName":  "CineSync",
+        "Punchline":  "Self-hosted synced in-world media screens for movie nights.",
+        "Description":  "Host a small server; paired friends connect and automatically see the in-world screens (TVs) you create, all playing the same media. Move/resize/rotate gizmo, LibVLC video, auto-reconnect. Pairs with a self-hosted Owncast stream.",
+        "Tags":  [
+                     "sync",
+                     "media",
+                     "movie",
+                     "screen",
+                     "cinema",
+                     "video",
+                     "owncast"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "AssemblyVersion":  "0.1.2.0",
+        "Changelog":  "Gizmo no longer leaks clicks to the game (stops FFXIV menu sounds while editing a screen).",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "RepoUrl":  "https://github.com/OmegaJackie/CineSync",
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/CineSync/releases/latest/download/CineSync.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/CineSync/releases/latest/download/CineSync.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/CineSync/releases/latest/download/CineSync.zip",
+        "IconUrl":  ""
+    },
+    {
+        "Author":  "Infi, kalilistic",
+        "Name":  "PlayerTrack",
+        "InternalName":  "PlayerTrack",
+        "AssemblyVersion":  "3.6.1.0",
+        "Description":  "PlayerTrack helps you keep a record of who you meet and the content you played together.\nOrganize players into categories, keep notes, and track them across name/world changes.\nCustomization options include colors, icons, nameplates, and alerts.",
+        "Punchline":  "Keep track of players you meet.",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "Tags":  [
+                     "player",
+                     "track",
+                     "orwell"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "RepoUrl":  "https://github.com/OmegaJackie/PlayerTrack-IPC",
+        "IconUrl":  "",
+        "Changelog":  "Fork of Infiziert90/PlayerTrack with an IPC surface for other plugins.",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "AcceptsFeedback":  true,
+        "LastUpdate":  1785472542,
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip"
+    },
+    {
+        "Author":  "twelvehouse",
+        "Name":  "ChatAnywhere",
+        "InternalName":  "ChatAnywhere",
+        "AssemblyVersion":  "1.4.0.1",
+        "Description":  "Features:\n- Real-time chat streaming via Server-Sent Events\n- Supports all channel types: FC, LS/CWLS 1-8, Party, Tell, Say, Shout, Yell, Alliance, and more\n- Custom filters with drag-and-drop reordering, unread badges, and default send channels\n- Tell mode with pin support and recent DM history\n- Send queue: brief countdown after pressing Send so you can cancel accidental sends (opt-in)\n- Emote picker with search and recently used, and FFXIV symbol picker\n- Link previews for trusted sites (Lodestone, YouTube, Twitter/X, Twitch, and more)\n- Appearance customisation: Light and Dark themes, Google Fonts, font size, coloured message backgrounds\n- Passcode authentication for browser access",
+        "Punchline":  "Host your chat on a web server so you can talk from anywhere.",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "Tags":  [
+                     "chat",
+                     "web",
+                     "browser",
+                     "relay"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "RepoUrl":  "https://github.com/OmegaJackie/ChatAnywhere-FL",
+        "IconUrl":  "",
+        "Changelog":  "Fork of twelvehouse/ChatAnywhere.",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "AcceptsFeedback":  true,
+        "LastUpdate":  1785472497,
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip"
+    },
+    {
+        "Author":  "Bozja Buddy Reborn contributors",
+        "Name":  "Bozja Buddy Reborn",
+        "InternalName":  "BozjaBuddyReborn",
+        "AssemblyVersion":  "1.0.10.0",
+        "Description":  "Reads live Bozja/Zadnor field-operation state (mettle, resistance rank, Lost Action holster, Critical Engagement phases) and orchestrates vnavmesh for movement, BossMod Reborn for AoE avoidance and Rotation Solver Reborn for rotations. Includes multibox coordination across game clients and Resistance relic progress tracking.",
+        "Punchline":  "Orchestrate Critical Engagements on the Bozjan Southern Front and Zadnor",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "Tags":  [
+                     "bozja",
+                     "zadnor",
+                     "field operations",
+                     "automation"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "RepoUrl":  "https://github.com/OmegaJackie/DalamudPlugins",
+        "IconUrl":  "",
+        "Changelog":  "",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "AcceptsFeedback":  true,
+        "LastUpdate":  1785472477,
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip"
+    },
+    {
+        "Author":  "Jackie",
+        "Name":  "Line Me Up",
+        "InternalName":  "LineMeUp",
+        "AssemblyVersion":  "1.0.0.0",
+        "Description":  "Walks your character onto the spot a target is standing on, then turns you to face the same way they do. Movement is real: your character walks there under its own power, easing off speed on the final approach so it settles on the mark rather than overshooting it. Supports a target-relative offset, a facing offset, and a continuous follow mode that keeps you on their mark as they move. Built for lining up at close quarters - there is no pathfinding.",
+        "Punchline":  "Walk onto your target\u0027s spot and match the way they\u0027re facing.",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "Tags":  [
+                     "position",
+                     "rotation",
+                     "align",
+                     "gpose",
+                     "screenshot"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "RepoUrl":  "https://github.com/OmegaJackie/DalamudPlugins",
+        "IconUrl":  "",
+        "Changelog":  "",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "AcceptsFeedback":  true,
+        "LastUpdate":  1785472470,
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip"
+    },
+    {
+        "Author":  "Jackie",
+        "Name":  "SellJunk",
+        "InternalName":  "SellJunk",
+        "AssemblyVersion":  "1.0.0.0",
+        "Description":  "Flags inventory items as junk when they are re-buyable from an NPC vendor under a gil threshold AND are either low-level/untimed gathering node drops or only used in below-max-level crafts. Sells them to any open shop on a single confirmed click, and retrieves matching junk out of your retainers at a summoning bell.",
+        "Punchline":  "One click to clear vendor-replaceable clutter out of your bags",
+        "ApplicableVersion":  "any",
+        "DalamudApiLevel":  15,
+        "Tags":  [
+                     "inventory",
+                     "vendor",
+                     "sell",
+                     "junk",
+                     "retainer"
+                 ],
+        "CategoryTags":  [
+                             "utility"
+                         ],
+        "RepoUrl":  "https://github.com/OmegaJackie/DalamudPlugins",
+        "IconUrl":  "",
+        "Changelog":  "",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "AcceptsFeedback":  true,
+        "LastUpdate":  1785472472,
+        "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip",
+        "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip",
+        "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip"
+    }
+]

@@ -1,0 +1,7 @@
+# dist/*.zip is deliberately committed - it is what the repo serves.
+Thumbs.db
+desktop.ini
+.DS_Store
+*.user
+.vs/
+.idea/
