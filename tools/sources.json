@@ -60,6 +60,14 @@
       "Project": "C:\\Users\\Jackie\\Documents\\DalamudPlugins\\plugins\\SellJunk\\SellJunk.csproj",
       "RepoUrl": "https://github.com/OmegaJackie/DalamudPlugins",
       "CategoryTags": [ "utility" ]
+    },
+    {
+      "InternalName": "AutoFATE",
+      "Hosted": "dist",
+      "Project": "C:\\Users\\Jackie\\Documents\\DalamudPlugins\\plugins\\AutoFATE\\AutoFATE.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/DalamudPlugins",
+      "CategoryTags": [ "utility" ],
+      "Changelog": "Standalone rebuild of the Date With Destiny / Fate Tool Kit module from Jaksuhn/ffxiv-bundleoftweaks (BSD 3-Clause). Requires vnavmesh, BossMod Reborn, Rotation Solver Reborn and TextAdvance."
     }
   ]
 }

@@ -24,6 +24,7 @@ Everything below then shows up in the normal plugin installer.
 | **Bozja Buddy Reborn** | Orchestrates Critical Engagements on the Bozjan Southern Front and Zadnor. |
 | **Line Me Up** | Walks you onto your target's spot and matches the way they're facing. |
 | **SellJunk** | One click to clear vendor-replaceable clutter out of your bags. |
+| **AutoFATE** | Automated FATE grinding — RSR fights, BossMod dodges, vnavmesh walks. Rebuild of the Fate Tool Kit module from [Jaksuhn/ffxiv-bundleoftweaks](https://github.com/Jaksuhn/ffxiv-bundleoftweaks). |
 
 Some of these automate movement and combat, which is against the FFXIV User Agreement and gets
 accounts suspended. Each plugin says so on its own page. Use them knowing that.
@@ -43,9 +44,9 @@ Source for the first-party plugins lives in this repo under `plugins/`: **Bozja 
 pull from upstream: [PlayerTrack-IPC](https://github.com/OmegaJackie/PlayerTrack-IPC) and
 [ChatAnywhere-FL](https://github.com/OmegaJackie/ChatAnywhere-FL).
 
-**AutoFATE is source-only.** It has no entry in `tools/sources.json`, so it isn't built here, isn't
-in `dist/`, and doesn't show up in the plugin installer — the code is here to be version-controlled,
-not yet published.
+Bozja Buddy Reborn's ECommons `ProjectReference` resolves outside this repo (to
+`../../../ZodiacRedone/ECommons`), so a fresh clone won't build that one plugin without that
+checkout alongside it. The others are self-contained.
 
 ```
 plugins/            source for the plugins written here

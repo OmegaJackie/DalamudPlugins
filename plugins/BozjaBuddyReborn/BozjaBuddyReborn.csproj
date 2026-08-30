@@ -1596,7 +1596,7 @@
   <ItemGroup>
     <!-- ECommons supplies Svc, NeoTaskManager, EzThrottler and the chat/command helpers.
          Points at the local clone the other plugins on this machine build against. -->
-    <ProjectReference Include="..\..\ZodiacRedone\ECommons\ECommons\ECommons.csproj" />
+    <ProjectReference Include="..\..\..\ZodiacRedone\ECommons\ECommons\ECommons.csproj" />
   </ItemGroup>
 
 </Project>

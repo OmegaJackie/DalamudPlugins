@@ -11,7 +11,7 @@
         <Punchline>Automated FATE grinding — RSR fights, BossMod dodges, vnavmesh walks.</Punchline>
         <Description>Standalone rebuild of the Date With Destiny / Fate Tool Kit module from ffxiv-bundleoftweaks. Combat rotation by Rotation Solver Reborn, AoE avoidance and targeting by BossMod (Reborn), pathing by vnavmesh. Requires vnavmesh, BossMod Reborn, Rotation Solver Reborn, and TextAdvance.</Description>
         <RepoUrl>https://github.com/Jaksuhn/ffxiv-bundleoftweaks</RepoUrl>
-        <Tags>automation fate</Tags>
+        <Tags>automation;fate;grind;leveling</Tags>
     </PropertyGroup>
 
     <ItemGroup>
