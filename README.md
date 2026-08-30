@@ -94,10 +94,14 @@ pointing at that repo's `repo.json` and a `ReleaseRepo` of `owner/name`.
 Licensed per plugin rather than repo-wide, because the forks carry their upstream authors'
 copyright and this repo also serves their built binaries.
 
+Relicable and CineSync are original work; Relicable vendors NightmareXIV's ECommons (MIT) inside
+its own repo, which is that library's license, not Relicable's.
+
 | Plugin | License | Copyright |
 |---|---|---|
 | Bozja Buddy Reborn, Line Me Up, SellJunk | MIT — see `plugins/<name>/LICENSE` | OmegaJackie |
 | PlayerTrack | MIT | Infi, kalilistic — see [upstream](https://github.com/Infiziert90/PlayerTrack) |
-| Relicable | MIT | NightmareXIV |
+| Relicable | AGPL-3.0 | OmegaJackie |
+| CineSync | none stated | OmegaJackie |
 | ChatAnywhere | none stated upstream | [twelvehouse](https://github.com/twelvehouse/ChatAnywhere) |
 | AutoFATE | BSD 3-Clause — see `plugins/AutoFATE/LICENSE.md` | Puni.sh — rebuild of [Jaksuhn/ffxiv-bundleoftweaks](https://github.com/Jaksuhn/ffxiv-bundleoftweaks) |
