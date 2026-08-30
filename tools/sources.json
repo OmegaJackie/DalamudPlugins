@@ -43,19 +43,22 @@
     {
       "InternalName": "BozjaBuddyReborn",
       "Hosted": "dist",
-      "Project": "C:\\Users\\Jackie\\Documents\\Bozja Buddy Reborn\\BozjaBuddyReborn\\BozjaBuddyReborn.csproj",
+      "Project": "C:\\Users\\Jackie\\Documents\\DalamudPlugins\\plugins\\BozjaBuddyReborn\\BozjaBuddyReborn.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/DalamudPlugins",
       "CategoryTags": [ "utility" ]
     },
     {
       "InternalName": "LineMeUp",
       "Hosted": "dist",
-      "Project": "C:\\Users\\Jackie\\Documents\\Line me up\\LineMeUp\\LineMeUp.csproj",
+      "Project": "C:\\Users\\Jackie\\Documents\\DalamudPlugins\\plugins\\LineMeUp\\LineMeUp.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/DalamudPlugins",
       "CategoryTags": [ "utility" ]
     },
     {
       "InternalName": "SellJunk",
       "Hosted": "dist",
-      "Project": "C:\\Users\\Jackie\\Documents\\SellJunk\\SellJunk\\SellJunk.csproj",
+      "Project": "C:\\Users\\Jackie\\Documents\\DalamudPlugins\\plugins\\SellJunk\\SellJunk.csproj",
+      "RepoUrl": "https://github.com/OmegaJackie/DalamudPlugins",
       "CategoryTags": [ "utility" ]
     }
   ]

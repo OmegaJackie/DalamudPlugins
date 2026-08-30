@@ -1,0 +1,14 @@
+{
+    "Author": "Jackie",
+    "Name": "Line Me Up",
+    "Punchline": "Walk onto your target's spot and match the way they're facing.",
+    "Description": "Walks your character onto the spot a target is standing on, then turns you to face the same way they do. Movement is real: your character walks there under its own power, easing off speed on the final approach so it settles on the mark rather than overshooting it. Supports a target-relative offset, a facing offset, and a continuous follow mode that keeps you on their mark as they move. Built for lining up at close quarters - there is no pathfinding.",
+    "ApplicableVersion": "any",
+    "Tags": [
+        "position",
+        "rotation",
+        "align",
+        "gpose",
+        "screenshot"
+    ]
+}

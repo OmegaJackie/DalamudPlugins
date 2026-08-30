@@ -1,0 +1,1602 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <!--
+    BozjaBuddyReborn - a Bozja/Zadnor field-operation orchestrator.
+
+    Build requirements (same pin as the rest of this machine's plugins):
+      .NET 10 SDK              (Dalamud API 15 targets net10.0-windows)
+      Dalamud dev libraries at %AppData%\XIVLauncher\addon\Hooks\dev
+                               (or set DALAMUD_HOME)
+      Verified against Dalamud 15.0.2.3 / FFXIVClientStructs 7.51.0.8543 /
+      Lumina.Excel 7.5.1.0.
+
+    Change the SDK version if your installed Dalamud API level differs, or the
+    FFXIVClientStructs members this plugin reads (PublicContentBozja, BozjaState,
+    DynamicEventContainer, TerritoryInfo) may not line up.
+
+    BUILD DISCIPLINE (mirrors Relicable):
+      Every change is compile-verified in Debug AND Release before being handed back,
+      and the version below is bumped by one on the third component each time so the
+      dev plugin actually reloads. The changelog under <Version> records what each
+      build changed and why, newest first.
+  -->
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Bumped by 0.0.1.0 each change so the dev plugin shows the update. This build
+         (CRASH FIX - the sign-up button press passed a null AtkEventData and the recruitment
+         addon dereferences it):
+         1.0.27.0 could hard-crash the game client from the sign-up path. Reported sequence:
+         signed up for Castrum Lacus Litore through the plugin, withdrew by hand, then signed up
+         for an ordinary Critical Engagement. Crash dump crash-20260827005143 names it exactly:
+
+           Unhandled native exception, code C0000005 (access violation), reading address 6
+           [0] Client::UI::AddonMYCBattleAreaInfo.ReceiveEvent+0x5E
+           [4] ECommons...ClickHelperExtensions.ClickAddonButton(AtkComponentButton, AtkUnitBase*)
+           [5] BozjaBuddyReborn.Automation.SignUpRunner.Click
+           [6] BozjaBuddyReborn.Automation.SignUpRunner.StepRegister
+
+         THE CAUSE. AtkUnitBase.ReceiveEvent takes FOUR parameters, the last being AtkEventData*.
+         ECommons' convenience overload - the one 1.0.26.0 adopted - is a single line that leaves
+         that parameter null:
+
+             addon->ReceiveEvent(evt->State.EventType, (int)evt->Param, btnRes.AtkEventManager.Event);
+
+         Most addons never read it, which is why that overload is used safely all over ECommons.
+         AddonMYCBattleAreaInfo does read it: null plus a small field offset is an access at
+         address 6, which is precisely what the dump records. Registering had worked in earlier
+         sessions because the branch taken inside ReceiveEvent depends on the event type and
+         param - switching between engagements took a branch that touches the event data.
+
+         THE FIX. The press now goes through the full component path, which is what an actual
+         mouse click does: a constructed AtkEvent naming the button as target and the addon as
+         listener, plus a real (empty) input-data buffer rather than a null pointer. The event
+         type and param are taken from the button's own attached event, preferring an explicit
+         MouseClick/ButtonClick if the chain carries one, with a bounded walk so a circular chain
+         cannot hang the framework thread.
+
+         AND EVERY POINTER ON THAT PATH IS NOW CHECKED BEFORE USE, because an access violation is
+         a process kill rather than a catchable exception - a try/catch around this would have
+         caught nothing, so the guarding has to be preventive. Checked: the agent module and the
+         addon manager singletons, the button's owner node, and the attached event itself. A
+         button with no attached event is no longer clicked at all - that is the state a row is in
+         while the list rebuilds, which is exactly what the reported sequence produces - and a
+         refused press no longer advances the phase, so the flow retries instead of waiting on a
+         press that never happened.
+
+         Also hardened: the node walk skips any UldManager that has not finished loading or has a
+         null node list, and nothing is clicked until the window has been loaded and visible for
+         600ms, so a list still being populated is never touched.
+
+         ONE THING THIS CONFIRMS, from the dump rather than by inference: the runtime addon name
+         really is MYCBattleAreaInfo. That had been flagged as unverified since it was only ever
+         attested as a shipped ULD filename.
+         Compile-verified Debug and Release (0 warnings), from a clean obj/bin.
+
+         Prior build - 1.0.27.0
+         (Commence now runs - 1.0.26.0 cancelled its own attempt one tick after registering):
+         Reported: 1.0.26.0 fixed signing up, but it still never commences. Two defects, both
+         introduced by 1.0.26.0's own rewrite, either of which alone stops the second phase dead.
+
+         1. THE ATTEMPT CANCELLED ITSELF THE MOMENT REGISTRATION LANDED. 1.0.26.0 added a
+         precondition reading "already in an engagement, nothing to sign up for", backed by
+         DynamicEventContainer.CurrentEventIndex >= 0. That was the wrong reading of the
+         container: CurrentEventIndex goes non-negative when you REGISTER, not when you are
+         deployed - the container starts naming the engagement as soon as you are associated with
+         it. So the tick after a successful Register press, the guard fired and ended the attempt
+         with "Already in engagement #N", before the lottery had even run and long before a
+         Commence button could exist. Registering therefore worked and commencing was
+         unreachable, exactly as reported. The container is still the right SUCCESS signal; it is
+         simply not a precondition once the flow is underway, so it is now checked once, when the
+         attempt starts, and after that only as the outcome of the Commence press.
+
+         2. THE WINDOW COULD NOT BE REOPENED FOR THE SECOND PHASE. The "ask the agent to show the
+         window" latch was per ATTEMPT rather than per PHASE, so once it had been set the runner
+         would never ask again. Pressing Register frequently closes the recruitment window (and
+         the player may close it), and the Commence press has to happen at that same window a
+         minute or more later - so the second phase sat waiting for a window it had decided it had
+         already asked for, then timed out. The latch is now cleared on every phase change, and a
+         window that closes while awaiting the draw is reopened (capped at 8 reopens, with an
+         overall 5-minute ceiling on the attempt so a window that genuinely cannot open still
+         ends it).
+
+         3. SUCCESS WAS BEING INFERRED FROM THE SAME BAD SIGNAL. Having pressed Commence,
+         1.0.26.0 declared success as soon as RegisteredEventId was set - which, per (1), was
+         already true before the press. It would have reported success for a Commence that did
+         nothing. Success is now observed directly: the Commence button going away, or the
+         engagement actually being under way.
+
+         4. A DOUBLE-CLICK COULD HAVE WITHDRAWN THE REGISTRATION. It is ONE button whose label
+         changes - Register, then Withdraw, then Commence - and the label lags the press by a
+         frame or two. A second click fired into that gap lands on the same button now meaning
+         Withdraw and cancels the registration just made. Added a 1.5s interlock after every
+         click, and the "registration lapsed, try again" transition now requires the evidence to
+         persist for 3s rather than acting on one frame of a stale label.
+
+         5. THE CONFIRMATION HANDLER WAS MISSING RATHER THAN WRONG. 1.0.26.0 removed the old
+         indiscriminate Yes-clicker (correctly - it answered any prompt on screen, unread, on the
+         first tick, and reported success for it) but did not put anything back, so a Yes/No
+         raised by a Commence press would have gone unanswered. There is now a narrow one: only
+         after one of our own clicks has actually gone out, only for a prompt whose text mentions
+         this flow, and never through a disabled button. Unrelated prompts are logged and left
+         alone.
+
+         DIAGNOSTICS, because the remaining unknown is a string. The second-phase button's label
+         is matched against a list that is necessarily English and necessarily a guess at wording,
+         and a label that is not recognised is indistinguishable from no button at all. So the
+         window's button labels are now logged verbatim whenever the set changes, tagged with the
+         phase, and every give-up message names the buttons that were on screen. If Commence still
+         does not fire, /xllog will contain the line naming what the button actually says.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.26.0
+         (Critical Engagement sign-up rewritten - it was a one-click guess at a two-click flow,
+         which is why "sign up all" only ever reopened the window):
+         Reported symptom: pressing "Sign up ALL for the engagement" spams the recruitment window
+         open and never signs up or commences. It could not have worked. Four separate reasons.
+
+         1. JOINING IS TWO CLICKS IN TWO PHASES, AND THE CODE FIRED ONCE. From the Patch 5.35
+         notes, critical engagements "do not require you to be present in the field to
+         participate. Instead, players must request deployment via the Resistance Recruitment
+         window." That request is REGISTER during the ~60s registration phase, which enters a
+         lottery against the 24/48 participant cap; then, only if the lottery picks you, COMMENCE
+         during the ~120s preparation phase, which is the click that actually puts you in.
+         "Permission to join critical engagement granted! N minute remains to deploy" is the
+         message that opens phase two. It is one button whose LABEL changes - Register, then
+         Withdraw once you are in the lottery, then Commence once selected - so a single press can
+         never complete a join no matter what it sends. SignUpRunner is now a latched phase
+         machine (Opening, Registering, AwaitingSelection, Commencing) with a per-phase budget:
+         8s to open the window, 200s to wait out the draw, 20s to be deployed. The old TIMEOUT FOR
+         THE WHOLE ATTEMPT was 10 SECONDS - shorter than the registration phase alone.
+
+         2. THE PAYLOAD WAS A GUESS, SO IT IS GONE. The old code fired
+         Callback.Fire(addon, true, index) - a bare int at a row index - with a comment conceding
+         the shape was inferred rather than observed. Nothing anywhere drives this addon: no
+         plugin in the local corpus of several hundred references it, and FFXIVClientStructs
+         exposes no join method on AgentMycBattleAreaInfo (checked: its vtable is the plain agent
+         one). Every windowed list addon in ECommons that has per-row buttons uses a leading
+         command selector rather than a bare index, so the guess was very likely wrong - and a
+         wrong payload is not inert, it is an unknown command, which is the most likely reason the
+         window kept closing and being reopened. It now CLICKS THE BUTTON NODE instead:
+         ClickAddonButton reads the AtkEvent the game already attached to that button and hands it
+         back through ReceiveEvent, which needs no payload at all and is how ECommons drives every
+         other confirm button in the game. The button's label is then also the honest answer to
+         "am I registered", with nothing to guess at.
+
+         3. THE WINDOW SPAM, WHICH IS THE REPORTED SYMPTOM. Show() was called on EVERY 350ms step
+         where the agent was not yet active, with no latch and no cap, and the callback was
+         re-fired on every step where a row was found - up to 28 of each per attempt. If the fire
+         dismissed the window the two alternated: Show, fire, close, Show. Now: one Show, latched;
+         one click per phase, latched; and the addon is resolved through agent->GetAddonId()
+         rather than by the name "MYCBattleAreaInfo", which was only ever attested as a shipped
+         ULD FILENAME - not the same thing as a runtime addon name.
+
+         4. IT REPORTED SUCCESS FOR DOING NOTHING, IN THREE DIFFERENT WAYS. The verification
+         watched the ENGAGEMENT's state, which advances on the game's own timer whether or not you
+         did anything - so firing at a Register row and waiting for registration to lapse on its
+         own read as "Signed up (Commence)". The timeout path said "Signed up, but the engagement
+         state did not change", asserting success on a failure. And the YesNo handler clicked Yes
+         on the FIRST Yes/No dialog found anywhere, before the agent was even fetched, without
+         reading its text, and then reported "Signed up and confirmed" - so pressing the button
+         with any unrelated prompt on screen answered it, on every box. Verification is now
+         DynamicEventContainer's own CurrentEventId (added as CriticalEngagements.RegisteredEventId),
+         which names the engagement this character is actually in; the blind YesNo click is gone.
+
+         ALSO: TryFindJoinable returned the LAST Register entry rather than the first, and
+         preferred a Commence-state row - which, with no prior registration, is a row you cannot
+         join. Sign-up now refuses to start at all when the box is already in an engagement or is
+         not in a field zone (it previously started with no preconditions whatsoever, from Gangos
+         or a loading screen), is cancelled by Stop, and logs every step - the addon resolved, the
+         button clicked and its label, the outcome. The multibox panel shows the phase and the
+         window's real button labels, so "no button" / "wrong label" / "clicked and ignored" are
+         separable at a glance instead of collapsing into one string.
+
+         NEW DIAGNOSTIC - and the one thing that would settle the rest. Settings -> Zones now has
+         "Log every UI callback to /xllog". With it on, press Register and Commence BY HAND on a
+         live engagement: the log then shows the addon's real runtime name and the exact argument
+         list the game sent, which is the whole of what nobody has ever written down. Send that
+         and the click path can be replaced with the real callback. It hooks every addon in the
+         client, so turn it off afterwards.
+
+         A PREMISE THIS BUILD DOES NOT ACT ON, DELIBERATELY. If registration really is
+         window-only, then walking into a Critical Engagement's circle enrols nobody, and the
+         travel-and-hold path in Commit() plus CeSnapshot.IsJoinable are solving a problem that
+         does not exist. Both comments now say so. The behaviour is UNCHANGED pending one live
+         check - stand in a circle through the whole registration phase without touching the
+         recruitment window and see whether you are pulled in - because guessing wrong in that
+         direction would break the CE path that may currently be carrying the plugin.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.25.0
+         (The pathing overhaul - stuttering, wedging, walking into mobs, boxes scattering and a
+         zone restriction that restricted nothing were five symptoms of nine defects):
+         A full audit of the movement stack against the five failures reported from a live
+         multibox run. Every item below was traced to source; the four marked ADVERSARIALLY
+         CONFIRMED additionally survived an independent attempt to refute them.
+
+         1. STALL DETECTION COULD NEVER FIRE, SO NOTHING EVER RECOVERED. [ADVERSARIALLY CONFIRMED]
+         Two independent defects reset the same clock. (a) Movement.TravelTo's dodge-resume zeroed
+         _leg to force one re-issue, but _leg is also what legChanged is measured against, and a
+         Bozja world coordinate is hundreds of units from the origin - so legChanged read as
+         "new intent" and ran the branch that resets _lastProgressMs, twenty lines below the block
+         that had just carefully ADVANCED it past the pause, in the same call. That block's own
+         comment says resetting it "is what used to pin RepathCount at zero forever, so genuinely
+         wedged travel could never report itself as stuck". (b) Progress was measured as raw
+         displacement since the last sample, which ANY motion satisfies - a knockback, a BossMod
+         sidestep, or the plugin's own re-path loop taking two steps at an unreachable point - and
+         the sample anchor only advanced when the test passed, so one twitch anywhere in the 8s
+         window reset both the clock and the counter. Net effect: `stalled` never became true, the
+         widening re-snap (the ONLY behavioural recovery in the codebase) never ran, `Stuck` never
+         latched, and a wedged character reported "Travelling ... (18y)" with 0 repaths forever.
+         Now: _forceReissue carries "re-issue" without carrying "new intent", and progress is net
+         closure on the leg target (_bestRemaining), which running in circles does not produce.
+
+         2. THE DODGE YIELD WAS A HAIR TRIGGER, AND THAT IS THE STUTTER. One true tick of
+         AvoidanceIsSteering cost a full path teardown; resuming forced a fresh pathfind. With the
+         400ms resume tail that is a ~600ms cycle against a 750ms repath interval - the character
+         was being asked to restart a path more often than vnavmesh can deliver one, so it lurched
+         and stopped instead of running. AvoidanceIsSteering is satisfied by any telegraphed zone
+         existing at all, and IsNavigating is near-permanently true once Reborn's AI is on, so in
+         an open field zone full of other players this fired more or less continuously. Now: two
+         consecutive ticks are required before yielding; the 6s cap re-bases after a cooldown
+         instead of latching avoidance off for the rest of the danger period; and a gap in the
+         questioning (an engagement, an errand, a death) ends the yield episode rather than leaving
+         a stale clock that trips the cap on the next route's first dodge. CombatApproach is fed
+         the smoothed signal too, not the raw one.
+
+         3. THE ARRIVAL LEASH HAD NO HYSTERESIS. [ADVERSARIALLY CONFIRMED] Entry and exit were the
+         same expression, and the only one-way latch was armed behind `attackers == 0` - disarmed
+         in exactly the situation the leash exists for. A stand-off attacker dragging the character
+         across the boundary alternated RunDefend and travel, toggling the rotation and tearing
+         down the approach path each way. The widened radius is now purely an EXIT threshold for a
+         box that has genuinely arrived, and the latch is on distance alone.
+
+         4. THE DEFEND BRANCH WAS CHOSEN BY AN UNLATCHED PER-TICK SCAN. [ADVERSARIALLY CONFIRMED]
+         Its two branches disagree about the rotation, the approach and travel, so a mob whose
+         target flickered swapped all of it several times a second - each flip a real IPC send in
+         both directions plus a 700ms approach lockout. "Under attack" is now latched: immediate on
+         entry, released only after 2.5s of quiet with combat genuinely over. Threat now also
+         filters to hostile combatants; it counted any battle NPC targeting the player, which
+         includes a companion chocobo following its owner, so a box with a chocobo out read as
+         permanently under attack and would stop to fight nothing.
+
+         5. THE ZONE RESTRICTION RESTRICTED NOTHING. PassesFarmFilter accepted any objective this
+         box had not personally visited, and SkipUnknownRegions ships off with an empty learned
+         table - so on a fresh profile every objective in the zone passed, and the only way to
+         learn one was for the filter to have already passed it. The early return also sat ABOVE
+         the Resolve call, so the positional estimate that three separate comments describe as the
+         pre-learning fallback was never consulted on the one path it was written for. And
+         ClassifyByPosition could not abstain (Anchors always holds all three entries for a field
+         zone), so the caller's "region unknown" branch was unreachable in both zones and ticking
+         SkipUnknownRegions silently became hard filtering on a three-point Voronoi over label
+         anchors. Now: resolve first, abstain when the two nearest anchors are within 60y of each
+         other, and only then apply the policy.
+
+         6. A WRONG LEARNED REGION WAS PERMANENT AND SELF-LOCKING. LearnRegionHere recorded the
+         CHARACTER's sub-area against the OBJECTIVE's id from an "arrived" the 30y leash may have
+         granted, and RegionResolver.Learn overwrote on every disagreement - so a fight near a
+         region boundary rewrote and SAVED the whole configuration several times a second,
+         synchronously, on the framework thread, with several boxes of one install contending for
+         it. A wrong value then filters that objective out forever, so it is never revisited to be
+         corrected. Now: learning requires genuine proximity to the objective, and first sighting
+         wins.
+
+         7. MULTIBOX IDENTITY WAS COMPARED BY VALUE, INCLUDING POSITION. SharedObjective is a
+         record struct and a skirmish ring drifts as the FATE progresses, so the same objective
+         read as a NEW one five times a second - clearing the arrival barrier, the release latch
+         and _committed on every tick, which made "everyone has arrived" unreachable and left
+         _arrivedAtMs perpetually zero so the host's timeout never elapsed either. Added
+         SameTarget (kind + id) and used it everywhere identity is meant. Also: the objective now
+         carries its territory over the wire and a client rejects a foreign-zone one (the two field
+         zones' coordinate ranges overlap, so it used to path to a real-looking wrong place rather
+         than reporting that it had nothing to do); the host broadcasts "nothing" instead of
+         latching its last objective forever; the objective and release latch are cleared on Start,
+         Stop and zone change; a released client stops re-pinging ARRIVED, which could refill a
+         barrier the host had just cleared for the NEXT objective and release the group early; and
+         the Holding branch now releases the approach and drives the director instead of returning
+         bare with a chase path still walking the box off the marker.
+
+         8. THE DETOUR WAS GEOMETRICALLY SELF-REJECTING, WHICH IS WHY THEY RAN INTO MOBS. The
+         waypoint was placed beside the ENEMY, so the leg to it ran diagonally toward the enemy
+         before turning out; that segment's closest approach is a*C/sqrt(a^2+C^2), which with the
+         shipped radii clears the 22y sight radius only past a=35y and never clears the 10y
+         proximity ring inside 10.7y. The acceptance re-check samples exactly that segment, so the
+         closer and more urgent the blocker, the more certainly the detour was thrown away - and a
+         rejection was silent, had no fallback, and burned a full 1s throttle during which a
+         mounted character closes 10-12y. It is now a lateral sidestep from the CURRENT position,
+         so the first leg opens the gap immediately instead of aiming at the blocker. Also: the
+         re-check no longer passes DangerIgnoreNearObjective (which excused every enemy within 25y
+         of the exact spot we were about to stand on - a bubble wider than the sight radius it
+         guards); the waypoint itself must be unoccupied, not merely the walk to it; a vertical
+         tolerance rejects a sidestep snapped onto another Zadnor tier; the check interval is 250ms
+         with a 100ms retry after a rejection; and the detour LEG is re-checked against live zones
+         each pass instead of being committed to blind for up to a hundred yalms while mobs patrol
+         and turn.
+
+         9. SMALLER, ALL REACHABLE. A refused MoveCloseTo recorded itself as new intent, which
+         permanently disabled the repath throttle and left an unconditional PROCESS-GLOBAL
+         Path.Stop firing at 5Hz - tearing down CombatApproach's path and any other plugin's. It
+         now counts as a failure, keeps its leg, guards the stop on ownership, and returns false so
+         the caller's "vnavmesh could not start a path" diagnostic stops being dead code. The stall
+         re-snap accepted a destination moved up to 80y and silently redefined "arrived" to mean
+         it. DangerZone gained a vertical band, so a mob on the tier below is no longer a
+         full-strength blocker. CombatApproach got a release/re-engage band and clears its lockout
+         on release. The suppression map is pruned instead of growing until a zone change.
+         DangerIgnoreNearObjective 25 -> 10, since it must not exceed the sight radius; the
+         detour-clearance slider now floors at 2, because 0 silently made every detour unacceptable
+         at every distance while every other setting still read as correct.
+
+         WHAT THIS BUILD CANNOT SETTLE, AND HOW TO SETTLE IT. Whether StatusFlags.Hostile reads
+         true for an IDLE, un-aggroed field mob is not answerable from source, and if it does not,
+         that one filter empties the scan and the character walks the direct line through
+         everything with the feature on and every setting looking right. The config window's enemy
+         panel now prints the full scan census - combatants seen, and how many were dropped for
+         each reason - and warns explicitly when every combatant was dropped for the hostile flag.
+         Read it standing near idle mobs; if it says that, the filter is the remaining cause of
+         "runs into enemies" and the line to delete is named in AggroAvoidance.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.24.0
+         (Party support casts at a named target instead of borrowing your selection - and the
+         PrimaryCostType story this plugin has told itself since 1.0.20.0 turns out to be wrong):
+         No new feature. This is 1.0.23.0's party support corrected, after the client itself was
+         disassembled to settle how a duty-action press actually picks its target.
+
+         THE COMMENT THAT WAS LOAD BEARING AND WRONG. DutyActions has said since 1.0.20.0 that an
+         ActionManager.UseAction call "would have to carry the right extra parameter to be a
+         duty-action press at all", because ClientStructs notes the game identifies a duty action by
+         the Action sheet's PrimaryCostType (20 for slot 1, 21 for slot 2). That is a runtime
+         LOOKUP, not a parameter: the client reads the row's PrimaryCostType, scans the loaded duty
+         slots for the action id, and returns 20+slotIndex when it finds one (game function
+         0x140903A30). Nothing passes it in. ExecuteDutyActionSlot is a wrapper that computes a slot
+         pointer and calls RaptureHotbarModule.ExecuteSlot, whose Action branch is literally
+         UseAction(Action, slot->CommandId, TargetSystem.GetTargetObjectId(), 0, None, 0) with
+         extraParam hard-zero - the SAME call, differing only in the target you hand it. Corpus
+         agrees: RotationSolver fires everything this way, and across BossMod, ICE, AutoDuty,
+         MOAction, ReAction and Redirect not one caller passes a duty-specific extraParam.
+
+         WHICH MATTERS BECAUSE AIMING BY SELECTION WAS WRONG TWICE.
+         First, it can miss. GetTargetObjectId returns the SOFT target when one is set and only
+         then the hard target. 1.0.23.0 set the hard target and verified the hard target - so a
+         controller user, or any plugin holding a soft target, would have had the charge sent
+         somewhere the guard had just declared safe. Silently. That is exactly the "applied to
+         somebody I did not choose" failure the stop button was asked for.
+         Second, the selection is not ours to borrow. This plugin's own CombatApproach decides what
+         to close on by READING the hard target, and CombatDirector clears a hostile one on every
+         travel tick. 1.0.23.0 already had to make the restore synchronous to stop the borrow
+         tearing down the approach path on every cast; naming the target removes the borrow instead
+         of timing it.
+         So DutyActions.PressAt(slot, expectedActionId, targetId, targetName) fires the slot's
+         action at one named object and never touches what is selected. The action is still the one
+         loaded in the slot, so charges and recast are still the slot's - only the target is stated
+         outright. GetActionStatus is asked first, because UseAction answers with a bare bool and
+         ExecuteDutyActionSlot does not answer at all (it returns mov al,1 on both paths), so until
+         now "Applied" counted presses rather than casts.
+         DutyActions.Press - the hotbar route - is unchanged and still what the duty-action window
+         clicks through. A person clicking a button should hit what they are pointing at.
+
+         THE MULTIBOX PILE-ON, which was a charge multiplier hiding inside a virtue. The first
+         sweep walked the party in party-list order, and the comment credited that determinism with
+         making boxes "agree about who is next". It does exactly the opposite of what that implies:
+         every box runs the same algorithm over the same party, so all of them pick the same first
+         unbuffed member and eight boxes buy one buff with eight charges. The sweep now starts at
+         THIS box's own position in the party list and wraps, which keeps each box deterministic and
+         reproducible while systematically sending different boxes at different people.
+
+         TWO LIVE BUGS AROUND ZONING, both of which the review found by reading the wiring rather
+         than the driver. OnTerritoryChanged reset the holster driver, the mount and the aggro
+         suppressions - and never touched party support, whose refusal table is keyed by object id
+         and whose comment two lines above already says object ids do not survive a zone change. It
+         now stops. And zoning WITHIN Bozja drops the director for a second, which the driver read
+         as "not in a field operation" and terminated itself over; BetweenAreas is now tested first
+         and pauses.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): whether the server accepts a Lost Action aimed at an object that was never
+         the client's hard target. Strongly implied - MOAction and ReAction do exactly this for
+         ordinary actions by rewriting UseAction's targetId, and the action packet carries its own
+         target - but not measured for a Lost Action specifically. If casts stop landing entirely,
+         that is the thing that failed, and the fallback is the old shape: set the hard target,
+         press the slot, restore synchronously. The refusal now has a voice either way, because
+         GetActionStatus is consulted before anything is spent and its status code is printed.
+         Also unmeasured: whether firing by action id deducts the duty slot's charge identically to
+         pressing the slot. Inferred from the calls being identical.
+
+         Prior build - 1.0.23.0
+         (Party support: buff whoever has nothing, top up whoever is nearly out, heal whoever is
+         lowest - and a stop button that is always the second thing you see):
+         Requested: "Duty Actions pane should be transparent, for buff/status effect skills it
+         should apply first to those who don't have it in the party then those who are more than
+         80% through it's total duration. i.e. Bravery lasts 10 minutes, if person has less than 2
+         mins(20%) apply, there should be a stop option so it can be stopped when applying to non
+         party targets. if no more actions available, stop task. Healing actions should
+         automatically target lowest HP user in party first", and separately: "When creating the
+         loadouts, you should be able to select from a dropdown of clients to select who to apply
+         to."
+
+         THE 80% RULE NEEDED A TOTAL, AND THE TOTAL WAS NOT WHERE IT SHOULD BE. To say a buff is
+         80% gone you need to know how long it runs, and the Status sheet does not say: 37 raw
+         columns, not one of them time-valued. Action's only time fields are Cast100ms and
+         Recast100ms, both 25 for Lost Bravery AND Lost Protect even though those run 600s and
+         1800s. PrimaryCostValue is the holster cost, and the LONGER of the two has cost 0. A scan
+         of every integer column of every scannable sheet for a value keyed by status id found
+         nothing.
+         It is in ActionTransient.Description - the tooltip prose - as a literal line:
+           Action 20713, Lost Bravery: "...by 5%.\nDuration: 600s"
+           Action 20709, Lost Protect: "...physical damage taken by 10%.\nDuration: 30m"
+         600s is ten minutes, which is the figure the request quoted for Bravery, so the source
+         agrees with the player-visible truth rather than merely being self-consistent. That is
+         parsed at load in LostActionDurations, which means a balance patch that changes a duration
+         changes this with it - no table to go stale.
+         Two hazards, both handled. The text is LOCALISED ("効果時間：600秒" on a JP client), so the
+         sheet is fetched with ClientLanguage.English explicitly rather than the client's. And 13 of
+         the 99 rows carry more than one Duration line - Lost Swift has three, 10s/60s/30s - where
+         the first is the action's own effect and the rest belong to secondary statuses, so only the
+         first is taken.
+         WHERE THE DURATION IS ABSENT - every Essence, and every instant - the 80% pass is SKIPPED
+         rather than guessed at, and the settings list marks those actions "(no duration in the
+         data - never topped up)". The rejected alternative was learning the longest RemainingTime
+         ever seen, and it is worth saying why: your first sighting of a buff is almost never at
+         t=0, so the learned maximum comes in UNDER the real total, which makes every buff look
+         fresher than it is and delays the top-up silently and unboundedly.
+
+         WHO IT CAN AIM AT IS A STRUCTURAL ANSWER, NOT A CHECK. The request asked for a stop
+         "so it can be stopped when applying to non party targets" - so the stronger half of that
+         is making the case impossible. Every candidate comes from PartyView, which is built from
+         IPartyList, which covers the 8-man party ONLY: the 48-player alliance is not in it and is
+         not reachable from it, so there is no way to NAME an alliance member or a passer-by here
+         and therefore no rule to forget. On top of that, membership is re-derived live in the
+         instant before the press, because the list a decision was made from is a tick old.
+         Two API facts made real guards necessary rather than decorative. Dalamud's
+         Svc.Targets.Target setter calls the native SetHardTarget and DISCARDS its bool, so a
+         refused target fails completely silently - hence the read-back that confirms the game
+         accepted it before anything is pressed. And IPartyList reports Count 0 when solo rather
+         than 1, so the local player is simply absent from their own party; PartyView falls back to
+         them alone, and a solo box buffs itself.
+
+         THE ORDER, WHICH IS THE REQUEST RESTATED. Buffs: first anyone with nothing at all, then -
+         most-expired first - anyone under 20% of the total. The two are not the same need: someone
+         with no buff is getting nothing, while someone at 15% of a ten-minute Bravery still has
+         ninety good seconds.
+         They are two sweeps over the WHOLE configured list, not two steps inside each action, and
+         that nesting is the request read literally. Per-action nesting would finish Bravery
+         entirely - topping a second player up from 15% - while somebody else still had no Protect
+         at all, and "apply first to those who don't have it" plainly means an unmet need anywhere
+         beats a top-up anywhere. Within the first sweep the order is the priority order the
+         operator ticked; within the second it is most-expired-first, because unlike the first those
+         candidates are not equivalent.
+         Healing joins the FIRST sweep, keyed on HP instead of on a status: lowest current HP first,
+         re-decided before every single cast. It has no second sweep - there is no topping someone
+         up towards full. A floor (65% by default) is what stops "lowest" meaning "whoever is at
+         99%": there is always a lowest, and without a floor "nothing left to do" could never be
+         true.
+         A load takes a tick or two to land, which is long enough for the reason someone was chosen
+         to stop being true - so when the slot finally comes up, the same test that chose them is
+         re-run against the same sweep, and a member who has since been buffed or healed by somebody
+         else is dropped rather than having a charge spent on them out of momentum.
+
+         AND IT STOPS ITSELF. "If no more actions available, stop task": when no configured action
+         is loaded with a charge up NOR sitting in the holster, the task ends and says how many it
+         got through. Everyone-being-covered is deliberately NOT a stop - that is the task doing
+         its job, and buffs expire - so it idles there instead and says so.
+         The stop is a button on the main window next to the status line, a per-box button in the
+         multiboxer, and BoxVerb.PartySupport so the host can turn it off on every box at once
+         without focusing four game windows.
+
+         WHY IT PRESSES A SLOT RATHER THAN CALLING UseAction WITH A TARGET ID. The corpus idiom for
+         aiming an action is ActionManager.UseAction(type, id, targetId, ...), which would skip the
+         targeting dance entirely - but ClientStructs notes the game identifies a DUTY action by the
+         Action sheet's PrimaryCostType (20 for slot 1, 21 for slot 2), so that call would have to
+         carry the right extra parameter to be a duty-action use at all rather than an ordinary use
+         of the same action id. The same reasoning that put DutyActions.Press on
+         ExecuteDutyActionSlot in 1.0.20.0 applies here: set the target, press the game's own
+         button, and every targeting rule behaves as it does for a manual click.
+         The previous hard target is put back SYNCHRONOUSLY, inside the same call, and that ordering
+         was got wrong first time. Handing it back a third of a second later left the target sitting
+         on a party member across a controller tick or two - and CombatApproach decides what to
+         close on by READING the hard target, so every single cast tore down the approach path and
+         made a melee box re-pathfind to the boss it was already walking to. On a 1.5s gap that is
+         roughly a quarter of a fight spent re-pathing. Returning the borrow before the call returns
+         means nothing else ever observes it: the approach, the director's hostile-target clear and
+         the operator's own click all run later in the tick and see the target as they left it.
+         The bet that makes is that the client captures the target when UseAction is CALLED rather
+         than when the queued action executes - which is how the action queue is understood to work,
+         and which the seam below says how to unpick.
+
+         SIX DEFECTS FOUND BY REVIEW AND FIXED HERE, all of them in the new driver:
+           - Begin() on an already-running task cleared the pending state, so a second click on
+             "Party support ON" landing mid-load stranded a charge already pulled from the holster
+             into a slot nobody would press, and the next tick stopped the task reporting that the
+             action had never been in the holster. Begin() is now a no-op while Active.
+           - The deferred restore captured the PREVIOUS target on every Fire, so two Fires in one
+             tick made the second capture the party member the first had left selected - the
+             operator's real target lost for good. Dissolved by the synchronous restore.
+           - The restore also overwrote a target the operator (or RSR) had set during the window.
+             It now reverts only if the borrowed member is still the one selected.
+           - A UseFromHolster the game refused did not spend the gap window, so the identical call
+             was re-issued on every controller tick, ignoring the configured cast gap entirely.
+           - A party member the game refuses to target - mid-raise, in a cutscene, flagged
+             untargetable - was re-picked every window forever, starving everybody behind them in
+             the sweep. A refusal is now REMEMBERED for ten seconds, not merely reported, so the
+             sweep moves to somebody it can serve and comes back.
+           - "Out of stock" was conflated with "not firable right now", which would have ended the
+             task every time an action went on recast. (Caught before review; noted for the record.)
+
+         ALSO IN THIS BUILD, from the second request: loadouts carry the box they are FOR. The
+         editor has an "Apply to" dropdown listing This box, All boxes, and every connected peer by
+         name, and the row's single button says where it goes rather than making you remember -
+         "Apply to Kallen" beats "Apply" when four clients are up. A saved box that is offline stays
+         in the list marked, and the button disables and says why, because a BoxCommand addressed
+         to nobody is ignored by every box: the safe failure, but a completely silent one.
+
+         And the duty-action pane is transparent - ImGuiWindowFlags.NoBackground plus BgAlpha 0,
+         applied in PreDraw because the window system reads both on the way into ImGui.Begin and a
+         value set inside Draw would land a frame late. The title bar deliberately stays: with the
+         background gone it is the only thing left to drag the window by. There is a switch under
+         Settings, Lost Actions.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the targeting handshake, which is the part that cannot be checked offline.
+         Set target, press, restore - all inside one call - assumes the client captures the target
+         when the action is issued rather than when a queued action later executes. If casts land on
+         whatever was targeted BEFORE the cast instead of on the chosen party member, that
+         assumption is wrong and the restore needs deferring by a tick again - in which case the
+         approach conflict above comes back and CombatApproach needs to hold its enemy across the
+         borrow rather than re-reading the hard target. The read-back guard means an outright
+         targeting refusal presents as "The game would not target X - passing over them for now"
+         rather than as a misfire, and party-targeted actions redirect to self on an invalid target,
+         so the worst case is a charge landing on the caster rather than on a stranger. Also unverified live: whether IPartyMember.Statuses stays populated for a member
+         who is out of range - the struct read succeeds either way, so a zeroed list would read as
+         "they have no buff" and burn a charge topping up someone who is fine.
+         NOTED, NOT CHANGED: the header comment above says this project is verified against Dalamud
+         15.0.2.3 / FFXIVClientStructs 7.51.0.8543, and the dev folder on this machine now actually
+         holds 15.0.3.2 / 7.55.1.8875. Everything in this build compiles against what is installed.
+
+         Prior build - 1.0.22.0
+         (Loadouts get a searchable picker and an Essence slot, and nothing re-applies a buff you
+         are already running):
+         Requested: "You should be able to search in the search when in loadouts and should allow
+         you to assign the essences in another dropdown besides duty actions and have the same
+         type. this should check against your status effect to make sure you're not wasting it by
+         applying the same one."
+
+         THE SEARCH. A picker listed 33 or 36 entries in MYCTemporaryItem row order, which is
+         release order - so finding Lost Font of Power meant scrolling past nineteen things. Every
+         picker now opens with a filter box that already has keyboard focus, so it is click-then-
+         type rather than click-then-aim, and Enter takes the first remaining match. Two or three
+         characters is usually the whole interaction.
+
+         THE ESSENCE SLOT. Loadouts carry a third field, and it is deliberately NOT a third duty
+         slot, because an Essence is not a slot: it is an item the game consumes out of the holster
+         to give you a half-hour buff, and exactly one can be running. The picker offers the 36
+         Essence rows (plain, Deep and Pure) and the two duty pickers offer the 33 action-type
+         rows; the lists are disjoint by construction, so neither can build a loadout that applies
+         cleanly and then does nothing - which is what the duty pickers could do until 1.0.21.0
+         filtered the item rows out of them.
+         This does mean applying a loadout now SPENDS something, where before it only moved icons
+         onto a bar. That is the point of the feature, but it is not a detail to leave implicit, so
+         it is stated in yellow above the list and again under the Essence picker.
+
+         AND THE STATUS CHECK, WHICH IS WHAT MAKES THAT SAFE. An Essence applied over itself is a
+         farmed copy burned for nothing; on four boxes, on a habit, it is a farming session. So the
+         Essence is used only when the buff it grants is NOT already on the player, and a refusal
+         reports which Essence is up and for how long. Refusing counts as SUCCESS, not failure -
+         the loadout asked for a state and the box is already in it, so "apply to all" goes green
+         across a group where half of them were already buffed, rather than training the operator
+         to press it again.
+         The same guard went into the auto-use driver, where the waste was worse and older: that
+         list runs on a timer, so an Essence ticked in it was consumed every cooldown window for
+         the entire half hour it was already up, and Lost Protect was re-pressed every eight
+         seconds. Now an entry whose status is already running is skipped and the window goes to
+         the next thing in the priority order.
+
+         WHERE THE STATUS MAPPING COMES FROM, since the sheet does not simply say. Action's
+         StatusGainSelf column is EMPTY for 98 of the 99 Lost Actions - only Lost Stealth fills it
+         in - so this had to be derived, and it is derived two ways with different confidence:
+           1. THE ESSENCES ARE A TABLE, because nothing derives them: "Essence of the Aetherweaver"
+              grants "Spirit of the Aetherweaver", different words, and the icons do not match
+              either (action icons are 646xx, status icons 216xxx). What is true, and is what the
+              table encodes, is that the families are contiguous and in the same order in both
+              sheets: rows 41-55 and 56-70 both map onto statuses 2311-2325, rows 73-78 onto
+              2434-2439. Note the middle one - there is no separate "Deep Spirit of the X" status
+              anywhere in the sheet, so a Deep Essence and a plain one of the same name share a
+              status row.
+           2. EVERYTHING ELSE IS EXACT NAME EQUALITY, at runtime, which is better than it sounds:
+              "Lost Protect" the action and "Lost Protect" the status are the same string in
+              whatever language the client runs, because both sheets are localised together - so it
+              holds in every locale in a way that stripping an English prefix would not. Required
+              to be exactly one status of that name, and the action self-targetable and NOT
+              hostile-targetable, which is what throws out the three matches that are wrong: Mimic
+              (whose same-named status 1056 is a CHOCOBO RACING status - a pure collision, and the
+              reason uniqueness alone is not a sufficient filter), and Lost Incense and Lost Rend
+              Armor, whose statuses land on the enemy. That leaves 27 self-buffs mapped with no
+              hand-written ids at all.
+         An entry with no status is never refused. That is the direction to fail: a missing mapping
+         wastes at worst one charge, while a wrong one would silently stop an action ever firing.
+
+         THE ONE FALSE POSITIVE, STATED RATHER THAN HIDDEN. Because a Deep Essence shares its
+         status row with the plain one, using Deep over plain of the same name is a real upgrade
+         that this check will nonetheless refuse. That is the conservative way to be wrong - it
+         declines to spend rather than spending twice - and the editor says so under any Essence
+         it applies to.
+
+         The loadout wire format grew a third field and decodes a two-field one as "leave the
+         Essence alone", so a box still on 1.0.21.0 in a mixed group is not broken by an
+         instruction arriving a field longer than it expects.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the two halves of the status table that are asserted rather than matched.
+         The Essence runs assume both sheets stay contiguous and in step; a patch inserting a row
+         into either would shift a whole family, and the only guard is that a status id resolving
+         to nothing drops that entry. The Reraise pair (Resistance Reraiser and Lost Reraise ->
+         status 2355) is name-inferred, not matched. Both fail visibly rather than quietly: the
+         driver's line in the main window and the loadout's refusal both name the status they think
+         is up, so an Essence reporting the wrong buff name - or one that never applies because
+         something it does not grant is permanently "already running" - points straight at the
+         table. Also unconfirmed: whether the game distinguishes plain from Deep by status Param,
+         which would let the upgrade case above stop being a false positive.
+
+         Prior build - 1.0.21.0
+         (AutoUseLostActions finally uses a Lost Action: load, wait for the slot, press - and only
+         if you say so):
+         1.0.20.0 recorded this as FOUND WHILE DOING THIS, NOT FIXED HERE. This is the fix, and the
+         part that took the deciding is not the code.
+
+         WHAT WAS ACTUALLY WRONG. HolsterDriver called PublicContentBozja.UseFromHolster(index, 0),
+         read a true return as "the action fired", and stopped. It does not fire. ClientStructs
+         documents that call as "use lost action from holster INTO specified duty action slot (slot
+         is ignored for items, which are used directly)" - one function with two behaviours, and
+         the contrast in that sentence is the whole content of it. For an ACTION-type holster entry
+         it loads duty slot 1 and returns; nothing has been spent and nothing has been pressed. So
+         with the switch on, the plugin reloaded slot 1 every LostActionCooldownMs, forever, and
+         fired nothing - while also quietly stamping on whatever loadout was in that slot.
+
+         WHICH ENTRIES ARE WHICH, READ OUT OF THE SHEET RATHER THAN ASSUMED. MYCTemporaryItem.Type
+         is the discriminator, and LostActionCatalog had been dropping the column on the floor.
+         Over the 99 defined rows it takes exactly two values:
+           Type 1, ACTION - 33 rows. Lost Cure, Lost Manawall, Lost Font of Power, the Banners,
+             Lost Excellence, Lost Chainspell, and so on. Loaded into a slot. Must be pressed.
+           Type 2, ITEM - 66 rows, and this is much wider than the "potions and kits" the 1.0.20.0
+             note guessed at: EVERY Essence, Deep Essence and Pure Essence, plus Dynamis Dice,
+             Resistance Phoenix, Resistance Reraiser, the potion/ether/medi kits, Resistance
+             Potion, Lodestone, Light Curtain and Resistance Elixir. Consumed outright by the
+             holster call. No duty slot is involved, and pressing one afterwards would fire
+             whatever else the slot happened to hold.
+         Cross-checked against Category: every Type 2 row and no Type 1 row sits in
+         MYCTemporaryItemUICategory row 7, "Item-related". Two independent columns agreeing is why
+         this is stated as fact rather than as an inference.
+
+         THE PRESS IS A SECOND TICK, NOT A SECOND LINE. UseFromHolster returns before the game has
+         populated the slot, so pressing in the same tick reads the PREVIOUS occupant - and the
+         failure mode there is not "nothing happens", it is a Pure Essence spent by accident
+         instead of a Lost Cure. The driver therefore has a two-state machine: a load moves it to
+         WaitingForLoad, and the press happens on a later tick only once DutyActions.Read reports
+         the exact action id that was asked for. That id is handed to DutyActions.Press as well, so
+         its own mismatch guard is a second lock on the same door. If the slot never comes up, the
+         attempt is abandoned after 2500ms and reported rather than pressed hopefully.
+         Two things fall out of doing it this way and both are worth having. An action already
+         sitting in EITHER slot is pressed where it stands - no load, no churn, and a loadout the
+         operator set by hand gets used rather than overwritten. And a press refused for charges
+         lets the next action in the priority order have the window instead of wasting it.
+
+         SPENDING IS ITS OWN OPT-IN, BECAUSE COMPLETING THIS CHANGES WHAT A TICKED BOX COSTS.
+         AutoUseLostActions has never once spent an action-type charge. Anyone who turned it on did
+         so knowing - or at least experiencing - that it cost them nothing beyond the item entries.
+         Finishing the feature under the same switch would mean that on next load, without them
+         touching anything, a farmed stock starts draining on an 8-second timer. So the press is
+         Configuration.AutoFireLostActions, default off: a sub-checkbox under the existing one with
+         the difference between the two kinds spelled out beside it in yellow. With it off,
+         action-type entries are now SKIPPED rather than loaded - which is exactly what the old
+         behaviour amounted to, minus the pointless slot churn - and the picker marks each ticked
+         action "(not pressed)", so a switch that does nothing says so instead of being inferred
+         from the absence of an effect. Item-type entries are untouched either way: they were
+         genuinely working, and they are the one thing that switch has always really done.
+
+         ALSO, FROM THE SAME COLUMN: the multiboxer's loadout slot picker no longer offers
+         item-type entries. A duty slot cannot hold an Essence, so every one of those 66 rows was a
+         loadout that would apply cleanly and then do nothing.
+
+         And README.md's "Corrections to the source research document" is itself corrected. It
+         claimed UseFromHolster "removes the need for any ActionManager duty-slot guesswork" - the
+         doc comment read backwards, and the sentence this driver was built on. It now carries the
+         Type table above and says what the press actually is. The 1.0.11.0 note further down this
+         file that made the same claim is marked wrong in place.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): how long the game really takes to populate a duty slot after
+         UseFromHolster. The 2500ms window is reasoned, not measured - it only had to be longer
+         than a tick and shorter than a cooldown window. Watch the driver's own line: repeated
+         "duty slot 1 never came up as X - nothing fired" means the load is being refused or the
+         window is too short, and it fails safe in that direction by construction, since nothing is
+         pressed until the slot names the action. The direction that would matter - a press firing
+         something other than what was ticked - is what the id check on both sides exists to make
+         impossible, so seeing it at all would mean DutyActions.Read is handing back a stale slot.
+
+         Prior build - 1.0.20.0
+         (The duty-action hotbar is a hotbar now: clicking a slot fires it, here or on a peer):
+         Reported: "The duty action hotbar should be able to activate the clients duty action not
+         just see the info." Correct - the window has drawn both duty slots with charges and a live
+         cooldown sweep since the shared hotbar landed, and there was no way to press one, which
+         makes it a readout wearing a hotbar's clothes.
+
+         THE PRESS IS THE GAME'S OWN. RaptureHotbarModule.ExecuteDutyActionSlot(index) is the
+         function behind the duty-action button on screen, so every rule about what a duty action
+         does when pressed - which target it takes, whether it needs a hostile one, what the client
+         says when it refuses - behaves exactly as it does for a manual click. The alternative,
+         ActionManager.UseAction against a target this plugin resolves out of the Action sheet,
+         would have meant re-deriving all of that and getting one of them quietly wrong. (Checked,
+         for what it is worth: every one of the 99 Lost Actions is CanTargetSelf, CanTargetParty or
+         CanTargetHostile and not one is TargetArea - but duty actions exist outside Bozja too, and
+         the game's own call is the right one there as well.)
+
+         WHAT THE GAME WILL NOT CHECK FOR US. ClientStructs documents ExecuteDutyActionSlot as not
+         validating that the slot is in an executable state and as returning true regardless, so
+         its return value carries no information and every guard is this plugin's to make:
+         framework thread, a living character, a slot that is actually loaded, and a charge up.
+         Pressing an empty or recharging slot is otherwise completely silent, and a silent hotbar
+         is indistinguishable from a broken one - so the refusal is printed under the bar and fades.
+
+         A REMOTE PRESS NAMES THE ACTION, NOT JUST THE SLOT. A peer's row is drawn from a roster up
+         to half a second old and any box can reload its slots from the holster at any moment, so
+         "press slot 1" on its own could fire an Essence the operator never chose. The instruction
+         carries the action id the operator was looking at, and the far end refuses a mismatch by
+         name rather than resolving it by guessing. Lost Actions are farmed time.
+
+         ONE CODE PATH, AND IT IS THE EXISTING ONE. A click cannot touch game memory - ImGui draws
+         on a thread that may not - so a click only ever enqueues a BoxCommand, the same addressed
+         one-shot instruction the multiboxer panel already sends. Your own slot goes through
+         SendCommandLocal, a peer's through SendCommand, and the controller carries out both, so
+         pressing your own slot and pressing someone else's cannot drift apart. The host/client
+         rule is unchanged and now stated in the tooltip rather than only in the panel: your own
+         two slots always answer, a peer's answers only from the host box.
+
+         A SLOT IS A REAL BUTTON, NOT AN IMAGE WITH A CLICK TEST ON IT. The obvious way to make an
+         icon pressable - ImGui.Image, then IsItemHovered plus IsMouseClicked - fires the action and
+         starts DRAGGING THE WINDOW on the same press. Image and Dummy submit their item with id
+         zero, which never claims g.HoveredId, and a click with ActiveId and HoveredId both zero is
+         exactly what ImGui reads as a click on the window background. The bar would have walked
+         across the screen over a session of pressing it. An InvisibleButton with the icon painted
+         into it through the draw list takes the id, reserves the identical rect so the layout does
+         not move, and presses on release so sliding off a slot cancels. The empty-slot placeholder
+         stays an id-less Dummy on purpose - nothing to press there, and it leaves one place to grab
+         the window by.
+
+         AND THE INSTRUCTION QUEUE NOW DRAINS AT FRAME RATE. It used to sit at the top of the
+         throttled 200ms controller tick, which was invisible for "go tap the cache" and is not for
+         a hotbar press - a button that answers somewhere between instantly and a fifth of a second
+         late reads as a button that sometimes does not work. Draining an empty queue every frame
+         costs nothing.
+
+         Click-to-use is on by default, with a switch under Settings, Lost Actions. A hotbar you
+         cannot press is a display; a window kept open beside a rotation is also one you will
+         eventually click by accident, and the switch puts it back to read-only without closing it.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): ExecuteDutyActionSlot appears in no plugin in the local corpus, so this is
+         the first place that signature is exercised. If a press does nothing at all while the bar
+         plainly shows a charge up, that call is the thing to look at - everything around it (which
+         slot, which action, the charge check) is driven from the same live director read the
+         window already draws from.
+
+         FOUND WHILE DOING THIS, NOT FIXED HERE: HolsterDriver does not fire Lost Actions, despite
+         saying so. PublicContentBozja.UseFromHolster is documented as "use lost action from holster
+         INTO specified duty action slot (slot is ignored for items, which are used directly)" - so
+         for an action-type holster entry it LOADS slot 0 and stops, and only item-type entries
+         (the potions and kits) are actually consumed. That makes AutoUseLostActions half a
+         feature: it reloads a slot on a timer and never presses it. The 1.0.11.0 note in this file
+         claiming UseFromHolster "removes all ActionManager duty-slot guesswork" reads the doc
+         comment the other way and is what the driver was built on. The press half now exists, so
+         completing it is a small change - but it turns an opt-in that currently spends nothing into
+         one that spends farmed charges on a timer, which is a decision to take deliberately rather
+         than to slide in under a hotbar fix. Left alone, and left visible here.
+         The expected-action-id guard on a press is what keeps the two from colliding meanwhile: a
+         slot HolsterDriver has reloaded underneath the operator refuses by name.
+
+         Prior build - 1.0.19.0
+         (Sign-up now goes all the way: pick the engagement AND answer the confirmation):
+         Reported: "It has to sign up AND click yes, otherwise I still need to click each
+         individual window." Correct - 1.0.18.0 opened the recruitment window and stopped short of
+         choosing a row, which left exactly the per-window clicking the panel exists to remove.
+
+         THE ROW IS NOW CHOSEN FROM LIVE STATE, NOT GUESSED. AgentMycBattleAreaInfo carries a
+         MycDynamicEventData list of up to three engagements, each with TimeLeft, Id,
+         ParticipantCount, Name and a State: None=0, Register=1, Commence=2, Underway=3. So the
+         agent itself says which entry is joinable and at what index - the runner walks that list
+         and takes the first entry in Commence (an engagement ready to start is the one the clock
+         is running on) or otherwise Register. Nothing is fired unless the game has reported a
+         joinable row.
+         Only the callback SHAPE is inferred: a single int, the ordinary form for a list addon with
+         a button per row. That inference is fenced on both sides - it is fired only against a row
+         the agent confirmed, and the outcome is VERIFIED by re-reading that entry's state and
+         waiting for it to change. A click that does nothing is reported as "the engagement state
+         did not change" rather than being retried blindly or reported as success.
+         The following yes/no is answered in the same flow, since a sign-up that halts at a prompt
+         helps nobody.
+
+         Every step is paced at 350ms rather than run at frame rate - the game needs time to build
+         the window and raise the confirmation - and the whole attempt gives up after 10s.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the single-int callback is the one inferred piece. If the status settles
+         on "Signed up, but the engagement state did not change", the row callback takes a
+         different shape on this client and that message is the signal to capture it - everything
+         around it (which row, which state, the confirmation) is driven from real agent data.
+
+         Prior build - 1.0.18.0
+         (Sign up for a Critical Engagement on one box or all of them):
+         Requested: "There needs to be a option to commence/sign up all."
+
+         THE SEAM THIS CLOSES WAS A REAL ONE. Since 1.0.0.0 the plugin has travelled into the
+         engagement area during the Register phase and held, on the stated assumption that standing
+         inside is what enrols you - flagged in the README as unverified seam #1, "if a given CE
+         instead requires the Resistance Recruitment menu, that path is not implemented". The game
+         data says the menu is real: Addon 13988 is a list headed "Critical Engagements", 13985 is
+         "Permission to join critical engagement granted! N minute remains to deploy", and
+         FFXIVClientStructs documents AgentId 388 as "Bozja Recruitment" (MycBattleAreaInfo). A
+         list, a granted permission and a separate deploy timer only make sense if you enrol from a
+         menu and then travel. Standing in the circle was never the whole story.
+
+         WHAT IT DOES. A new SignUp instruction on the same addressed command channel as the rest,
+         so it works per box or for everyone at once, and - like every other instruction - on a box
+         that is parked rather than farming. Locally it opens the Bozja recruitment agent and
+         answers the yes/no confirmation if one appears. Both are ordinary, safe operations.
+
+         AND WHAT IT DELIBERATELY DOES NOT DO. It will not pick a ROW out of that list. The
+         callback arguments for the list are not derivable from the sheets, and firing guessed
+         values at an addon produces behaviour nobody can explain or reproduce - which is a far
+         worse outcome than one remaining click. So when the window opens and no prompt appears,
+         the box says exactly that instead of spinning or pretending. Narrowing that last step
+         needs one live observation of the callback the operator's own click produces.
+
+         The panel gives "Sign up ALL for the engagement" the widest button on the Boxes tab,
+         because a registration window is short and that is the control reached for under time
+         pressure, with a per-box equivalent on each row.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): whether opening the recruitment agent plus confirming a prompt is
+         sufficient on a live client, or whether the list row must be chosen - the status line on
+         each box now reports which case it hit, which is the observation needed to finish it.
+
+         Prior build - 1.0.17.0
+         (The unload error: a contended config save on the shared Dalamud database escaping Dispose):
+         Reported: "Sometimes on one of the clients will get an unload error."
+         Found in the log rather than guessed - [ERR] [LocalPlugin] Error while unloading
+         BozjaBuddyReborn, and the inner exception is SQLite.SQLiteException: database is locked,
+         thrown out of SavePluginConfig at the last line of Plugin.Dispose.
+
+         WHY IT IS A MULTIBOX PROBLEM SPECIFICALLY. Dalamud does not write plugin configs straight
+         to disk: SavePluginConfig goes through ReliableFileStorage, which is a SQLite database
+         inside the XIVLauncher folder - and every client running off one XIVLauncher installation
+         shares that single database. With four boxes, two clients saving in the same moment is
+         routine, and the loser gets the lock error. Dalamud's own DiscordBridge is visible in the
+         same log hitting the identical error on the identical call, so this is contention, not
+         corruption.
+         Uncaught in Dispose, a lost config write is promoted into an UNLOAD FAILURE: Dalamud then
+         warns that the plugin may be in an inconsistent state and the game should be restarted.
+         That is an enormously worse outcome than not persisting one setting.
+
+         Every save now goes through ConfigSaver, which retries a couple of times - the lock is
+         held for milliseconds while another client finishes its transaction, so the retry almost
+         always lands - and then gives up quietly with one Information-level line naming the real
+         cause. Settings re-save on the next change anyway. Applied to all fourteen save sites, not
+         just the one in Dispose, because the same contention can throw out of an ImGui draw or the
+         framework tick just as easily; those would have surfaced as a mid-session crash instead.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the retry count and 20ms spacing are judgement calls tuned to "another
+         client is mid-transaction", not measured. If the warning still appears often, the honest
+         next step is to stop saving from Dispose at all and rely on the save that already happens
+         on every settings change.
+
+         Prior build - 1.0.16.0
+         (Multiboxer console: remote commands, saveable Lost Action loadouts, and errands to the
+         nearest aetheryte or cache):
+         Requested: "a Bozja Multiboxer UI that lets you save loadouts and apply them to each
+         client, have them interact with nearest aetherytes/lost caches, anything that minimizes
+         having to manually click into each window."
+
+         A CORRECTION FIRST. Two builds ago I said flatly that Bozja has no aetherytes and nothing
+         to teleport to. The first half is right and the second was too strong. Territory 920/975
+         genuinely have zero Aetheryte rows and no TerritoryTypeTelepo coordinates, so there is no
+         Teleport-style fast travel - but EObjName 2011160 is literally "Bozjan aetheryte". The
+         in-zone network is built as ordinary interactable EventObjects rather than through the
+         game's Aetheryte system, exactly as Occult Crescent's are (EObjName 2014664, and South
+         Horn likewise has zero Aetheryte rows). So walking up to one and using it was always
+         possible; only the sheet-driven teleport is absent. The request was well founded and my
+         earlier answer conflated "no Aetheryte rows" with "no aetherytes".
+
+         THE COMMAND CHANNEL. A new addressed, one-shot instruction rides the existing pipe:
+         start, stop, apply loadout, interact-with-nearest, cancel. Deliberately NOT modelled like
+         the shared objective - an objective is state worth replaying to a box that reconnects,
+         whereas re-delivering "go tap the cache" to a box that rejoined an hour later would be
+         absurd. Targeting is by character NAME rather than connection id, which is a considered
+         exception to this plugin's own identity rule: the operator clicks a row that says a name,
+         and connection ids are invisible and change on every reconnect. A name matching nobody is
+         ignored by every box, which is the safe failure.
+         Local and remote take exactly ONE code path - the panel's "apply here" buttons enqueue
+         through the same inbound queue a wire instruction lands in - so the two cannot drift, and
+         a CLIENT box can still drive itself even though it may not command the group.
+         Instructions are drained and errands run whether or not the orchestrator is running, which
+         is the whole point: the box you want to send to a cache is usually one that is parked, and
+         requiring a farm run first would defeat the purpose.
+
+         LOADOUTS. A named pair of Lost Actions for the two duty slots, stored as MYCTemporaryItem
+         row ids because the holster is what a loadout must be satisfiable FROM. Applying resolves
+         the row to its action and calls RaptureHotbarModule.SetDutyActionSlot - but only after
+         checking the action is actually in that box's holster. Setting a slot to an action you do
+         not hold is a silently useless state: the bar shows it and nothing can be pressed, so the
+         box looks configured while being unable to act. Lost Actions are farmed and finite and the
+         boxes routinely hold different stock, so a loadout pushed to four clients is legitimately
+         unsatisfiable on some - refusing per slot and reporting which is the honest behaviour.
+
+         ERRANDS. Nearest Bozjan aetheryte (2011160), lost finds cache (2011127) or lost belonging
+         (2014189), matched on BaseId so no name comparison or localisation is involved. The box
+         walks there on the same vnavmesh Movement the controller uses - so the two can never both
+         steer - and interacts via TargetSystem.InteractWithObject with line-of-sight checked,
+         because skipping that is how you get a silent no-op against something through a wall we
+         merely pathed near. An errand outranks the orchestrator for its duration, keeps dodging
+         live but never arms the rotation, cancels itself on death, and gives up after 90s rather
+         than running at something unreachable forever.
+
+         THE PANEL. /bbr boxes, or the button on the Multibox tab. Boxes tab lists every client
+         with its duty slots in words and per-box start/stop/cancel plus all-box equivalents;
+         Loadouts tab saves, edits and pushes; Errands tab shows how far the nearest of each object
+         is from THIS box and sends one or all. A client is told plainly that only the host can
+         address the group.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): SetDutyActionSlot is the game's own duty-bar setter but has not been
+         round-tripped against a live Bozja holster here - if a loadout reports success and the bar
+         does not change, that call is the place to look. Whether a Bozjan aetheryte's interaction
+         actually offers travel (rather than only attunement) is likewise unverified offline. The
+         200y search radius for errand objects is a judgement call.
+
+         Prior build - 1.0.15.0
+         (Every duty-action slot read empty, on every box including your own):
+         Reported: "The actions are empty for all even myself even though we have actions."
+         TWO INDEPENDENT CAUSES, either of which alone was enough to empty the whole bar.
+
+         (1) A CIRCULAR GATE. DutyActionSync.Tick read `Available = DutyActions.Available;` and
+         then only called ReadBoth() `if (Available)` - but Available is a flag that ReadBoth is
+         what SETS. It starts false, so the read never ran, so the flag never became true, so the
+         read never ran. Nothing was ever read on any box, and since the wire faithfully carried
+         those empty slots to everyone else, every row on every client showed empty too. The read
+         is now unconditional and the flag simply reports what it found.
+
+         (2) THE WRONG "IS THERE ANYTHING HERE" TEST, and a fragile way of getting at the data.
+         The read required DutyActionManager.ActionsPresent, but that flag mirrors the UI state
+         (its own comment points at RaptureHotbarModule.SetDutyActionsPresent) rather than whether
+         actions are loaded - so it can be false with a fully populated duty bar on screen. An
+         action id of zero is the real "nothing here", and that is the test now.
+         The manager was also fetched through DutyActionManager.GetInstanceIfReady(), a standalone
+         signature-scanned function: when a signature goes stale it returns null silently, which
+         presents as exactly this bug. Bozja's slots do not live on BozjaState at all - that holds
+         only the holster, the stock of actions you OWN - they live on the content director, as
+         ContentDirector.DutyActionManager, and PublicContentBozja inherits ContentDirector. So
+         the manager is now taken from the director this plugin already reads mettle and the
+         holster from, by explicit-layout cast, needing no extra signature; GetInstanceIfReady is
+         the second choice, and the UI's own RaptureHotbarModule.GetDutyActionSlot (with charges
+         and recast from ActionManager) is the third, answering even when no director is reachable.
+
+         AND IT NOW EXPLAINS ITSELF. DutyActions.Diagnostic records which source answered and what
+         it saw - slot count, the ActionsPresent flag, or the specific failure - and the window
+         prints it whenever the bar reads empty. A bar showing nothing while actions are plainly on
+         screen is a read problem rather than a game state, and that difference should be visible
+         instead of guessable.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): which of the three sources actually answers in Bozja is the thing to
+         report back - the window names it. If the bar is still empty, that line says why.
+
+         Prior build - 1.0.14.0
+         (Shared duty-action hotbar across every multibox client, Occult-Crescent style):
+         Requested: a duty action hotbar like Phantom Jobs in Occult Crescent, showing what each
+         connected player has in Duty Slot 1/2 with the same information you would see for your
+         own.
+         WHERE THE DATA COMES FROM. The holster is the stock of Lost Actions you own; the two
+         DUTY ACTION slots are what is loaded and pressable, and the game manages those through
+         its generic DutyActionManager - ActionId[i], CurCharges[i], MaxCharges[i] and Recast[i]
+         (the charge arrays are sized 2, which is where the "two slots" comes from). That is the
+         same source the game's own duty hotbar renders from, which is what makes a peer's slot
+         displayable on equal terms with your own rather than approximated.
+         Note Recast is a RESOURCE GAUGE, not a countdown: Elapsed climbs toward Total, and a
+         multi-charge action subtracts one charge's worth on use rather than zeroing it. So "time
+         to the next charge" is the remainder of the current charge's slice, computed per charge -
+         reading Total minus Elapsed would show the time to FULL charges instead, which for a
+         three-charge Lost Action is wrong by up to two full recharges.
+         ON THE WIRE. Rides the existing multibox pipe, no second transport: clients send their
+         own loadout twice a second, the host folds its own row in and pushes the combined roster
+         back out, so every box draws one agreed list. That is N sends each way per second rather
+         than N-squared relaying. The host builds its own view from the very list it transmits,
+         so host and clients cannot disagree about what the roster is. Encoding is flat text with
+         cooldowns in tenths of a second, and character names are sanitised of the separator
+         characters so a name can never corrupt the framing.
+         SMOOTHNESS WITHOUT TRAFFIC. Your own row is read every frame - it is two pointer
+         dereferences - so it is perfectly smooth for free. Peer rows arrive twice a second and
+         have their cooldowns AGED FORWARD locally in between, crediting any charge that would
+         have finished, so a remote sweep runs down smoothly instead of stepping once a second
+         and a peer never reads "0 charges, 0s left" while waiting for an update.
+         Rendering mirrors the game: icon from the Action sheet, bottom-up cooldown wash with the
+         remaining seconds over it, charge count when the action has more than one, a green
+         border and full brightness only when something is actually pressable - so "who still has
+         an Essence up" is readable across the room without reading any numbers. Empty slots keep
+         their space so rows stay aligned. Your own row is first and labelled.
+         Works alone: with multibox off or the link down it still shows your own two slots rather
+         than an empty window.
+         Opened with /bbr duty (or /bbr actions), or the button on the Multibox tab.
+         Guarded against the load-failure class this project has already paid for once: the
+         cooldown tint is a plain colour converted inside Draw rather than an ImGui call in a
+         static initialiser, which would otherwise run during the plugin constructor on a
+         threadpool thread with no ImGui frame in scope.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the per-charge cooldown arithmetic is read from the RecastDetail
+         documentation rather than observed against a live multi-charge Lost Action - if a
+         three-charge action shows the wrong "next charge in", that division is where to look.
+         Peer rows are only as fresh as the last roster (500ms) plus local decay.
+
+         Prior build - 1.0.13.0
+         (The dodge gate was reading "the AI has a destination" as "the AI is dodging", so the
+         runner yielded forever and BossMod walked the character off on its own errands):
+         Reported: "It's trying to go to a quest but keeps saying yielding to bossmod, dodging a
+         mechanic when there's nothing close."
+
+         THE GATE MEANT SOMETHING ELSE. AvoidanceIsSteering was BossMod Reborn's
+         AI.IsNavigating, which its IPCProvider defines as `ai.Controller.NaviTargetPos != null`.
+         Reading AIController: NaviTargetPos is simply where the AI would like the character to
+         be, set from its navigation decision for ANY reason - uptime, positionals, following,
+         staying in range of a target, walking to an interact target. It is non-null essentially
+         all the time once the AI is enabled at all, and it says nothing whatsoever about
+         telegraphed danger. Keyed on that alone, the controller took the "dodging" branch on
+         every tick: it suspended travel, issued no path, and printed "Yielding to BossMod -
+         dodging a mechanic" indefinitely with nothing anywhere near the character.
+         And the second half of the report follows from the first. Both forks only steer while
+         vnavmesh's shared path flag is clear - so a runner that never issues a path leaves
+         BossMod free to move the character continuously, and the original's own AI preset walks
+         to whatever it finds, including a strongly-weighted goal zone around an interact target.
+         That is the "trying to go to a quest": not our travel, but BossMod filling the vacuum our
+         permanent yield created.
+         The gate now requires Hints.ForbiddenZonesCount > 0 as well - the count of LIVE
+         telegraphed zones, which is the half that actually means danger - so movement is handed
+         over when BossMod both sees something to avoid and wants to move because of it.
+         Otherwise travel keeps the path, which is the right precedence: BossMod defers to a
+         running vnavmesh path anyway, so a non-dodge reposition losing to deliberate travel is
+         exactly what we want.
+
+         A HARD CAP, because a permanent yield is always a bug. Handing our movement to another
+         plugin is done on trust, and no mechanic in this game justifies giving it up for more
+         than a few seconds. Past 6s of continuous yielding the controller takes the path back
+         regardless, logs a warning naming the situation, and carries on. Had this existed, the
+         reported failure would have been a stutter and a log line instead of a dead run.
+
+         FORK DETECTION NOW PROVES ITSELF. Detection keyed on the installed-plugin list, which
+         reports what is installed and enabled - not what actually constructed and registered its
+         IPC. This machine's Dalamud log shows exactly that gap: BossModReborn present with
+         loadPlugin:true and no "Finished loading" ever, while the original BossMod loaded
+         normally. Believing the name there would drive the Reborn surface against a fork that is
+         not running, and every Reborn-only read would quietly return its failure default. Reborn
+         is now only accepted when a Reborn-ONLY gate (Hints.ForbiddenZonesCount, AI.GetPreset,
+         AI.SetPreset) actually answers; otherwise it falls back to the original.
+
+         Dependencies now shows the two signals SEPARATELY - "danger zones active" and "BossMod
+         wants to move" - with the resulting yield decision and how long it has been held,
+         because conflating them is precisely what caused this. It also says in as many words
+         that "wants to move with no danger" is repositioning rather than a dodge, and normal.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the 6s yield cap and the requirement for a non-zero forbidden-zone count
+         are both judgement calls - if dodges now get cut short on a long mechanic, the cap is the
+         dial. With the ORIGINAL fork installed there is still no danger signal at all (it
+         registers no Hints.* gates), so it never yields and never can; its avoidance comes purely
+         from its own pathfinding while we are not moving the character.
+
+         Prior build - 1.0.12.0
+         (Two field failures: multibox peers only appearing after repeated toggling, and travel
+         standing still forever):
+         Reported: "The multiboxing isn't functioning well nor the pathing, I have to spam the
+         multibox for it to eventually show them as a peer." Diagnosed against the live Dalamud
+         log as well as source - the log showed this box timing out on the pipe every 6.000s for
+         nine minutes straight at Debug level (so invisible), and ZERO vnavmesh path requests from
+         us during a session spent standing in Bozja (territory 920). Both root causes below were
+         found by reading real source and then adversarially re-verified.
+
+         (A) MULTIBOX: THE ARRIVAL BARRIER WAS KEYED BY A NAME THAT IS ALWAYS "unknown".
+         _arrived was a dictionary keyed by the character name each box announces in its HELLO.
+         That name is computed in Plugin.SyncMultiboxLink, which first runs on the very first
+         framework frame - at the title screen, where LocalPlayer is null and the name degrades to
+         the literal string "unknown". Nothing ever corrected it: UpdateSelfName only assigned a
+         field and sent nothing, and the comment claiming "the client's reconnect loop re-sends
+         HELLO" was simply wrong, because the pipe has no keepalive (MsgPing was handled but never
+         sent by anything in the repo) and so never drops on its own. So every client collapsed
+         into ONE dictionary entry: PeerCount said 3, ArrivedCount said 1, arrived >= peers was
+         never true, and every objective burned the full 45s barrier timeout with the whole group
+         standing still. The same collision meant one client dropping erased everyone else's
+         arrival record. And the user's workaround is exactly this bug's only cure - toggling the
+         checkbox is the one code path that calls Stop() then Start(), forcing a fresh pipe
+         connection and therefore a fresh HELLO carrying the real name.
+         Fixed by keying on the connection id, which is unique by construction (it is already the
+         key of _clients, which is why PeerCount was always right). Identity for a barrier belongs
+         to the transport, not to self-reported display data. UpdateSelfName now also pushes a
+         corrected HELLO down the live link, and the host treats repeat HELLOs as idempotent.
+
+         (B) MULTIBOX: THE RETRY BACKOFF PUNISHED EXACTLY THE USER'S BEHAVIOUR. One 3000ms
+         constant was used BOTH as the ConnectAsync timeout and as an unconditional sleep after
+         every attempt. ConnectAsync is active discovery (it polls and returns the instant a host
+         appears), but the sleep is dead time - so toggling multibox on the HOST disposed every
+         client's pipe and dropped them all into a 3s blackout, meaning impatient re-toggling
+         actively PREVENTED discovery, while toggling on a CLIENT cancelled the sleep and
+         reconnected instantly. That asymmetry, with no UI feedback at all, is why it read as
+         random. Now: a 1000ms connect timeout, and an escalating 0/250/500/1000/2000ms backoff
+         reset on every success, so a host restart is picked up within a frame or two.
+
+         (C) MULTIBOX: THE FAILURE WAS UNOBSERVABLE. Every connect failure was Svc.Log.Debug and
+         the UI said a flat "Link down (acting alone)" whether it was still looking, had no host,
+         or had lost one. MultiboxIsHost defaults to false on every box, so the zero-configuration
+         state is "nobody is hosting" - unrecoverable and completely silent. The main window now
+         distinguishes connecting / no-host / up, names the last error, and after ~8s of failures
+         says outright that no host is listening and that exactly one box must be ticked as host.
+         The first failure of each streak is logged at Information.
+
+         Also fixed in the pipe while in there, each independently able to strand a box:
+         a superseded client loop unwinding on a threadpool thread could clear _connected and
+         _clientWriter belonging to a NEWER working connection (the link then read "down" with a
+         live pipe and ARRIVED silently never sent) - loops now carry a generation and only the
+         current one may clear shared state; the host wrote to StreamWriters from three different
+         threads (controller tick, accept loop, ImGui "Start all") with no lock, and StreamWriter
+         is not thread safe, so interleaved writes corrupted the line framing into the empty catch;
+         a redundant OBJECTIVE (which the host sends to catch a reconnecting box up) cleared
+         _released while BroadcastGo refused to re-send GO, permanently stranding that box for the
+         life of the objective; ARRIVED was latched as sent even when the link was down; and dead
+         MsgPing was removed rather than left implying a keepalive that does not exist.
+
+         (D) PATHING, THE BIG ONE: TWO INCOMPATIBLE DEFINITIONS OF "ARRIVED", so the runner stood
+         still indefinitely while reporting that it was travelling. vnavmesh comes to rest on a
+         shell of radius `range` around the point IT was given - and we give it the SNAPPED point,
+         because CE markers are routinely in mid-air or inside geometry. The controller meanwhile
+         asked whether we were within `range` of the RAW marker. With d = the horizontal distance
+         the snap moved the point, the character stops up to range + d from the raw marker, so any
+         sideways snap at all can make the controller's test unsatisfiable - and it is
+         systematically unsatisfiable in exactly the case snapping exists for, where the reachable
+         point is on the near side of the geometry the marker sits in.
+         The resulting loop was a silent deadlock: TravelTo's own early return measures against
+         the snapped point, so it returned "arrived" and stopped issuing paths, while the
+         controller saw "not arrived" and called it again every 200ms tick. Nothing escalated,
+         because the repath counter, the stall clock and the widening re-snap all live BELOW that
+         early return - RepathCount stayed 0, Stuck could never latch, and no warning was ever
+         printed. Status read "Travelling to ... (18y)" forever. The idle staging path had the
+         identical mismatch with a smaller range, making it easier to trip and permanent.
+         Fixed by giving Movement a persistent arrival basis - the raw destination and the point
+         vnavmesh is actually driven to - that survives Stop(), and making HasArrived measure
+         against it. The two tests now agree by construction. Where the snap had to move the
+         target further than the arrive range, the status says so explicitly rather than reporting
+         a clean arrival, because the character may be standing outside the arena it aimed for.
+
+         (E) PATHING: THE PLUGIN MODELLED vnavmesh AS SYNCHRONOUS, CANCELLABLE AND SINGLE-OWNER.
+         It is none of the three, and every remaining pathing defect came from that.
+         - Path.Stop clears the waypoint list but CANNOT cancel a pathfind that is still
+           computing, and AsyncMoveRequest hands that result to the follower whenever it lands.
+           So one stop is a request, not a guarantee - and Movement.Stop's old early return made
+           the second and every later stop a no-op, exactly when a second was needed. Stops are
+           now latched and re-pumped until vnavmesh reports idle, pumped every frame from
+           Plugin.OnUpdate rather than the controller tick, because the stops that matter most
+           (stopping the run, leaving the zone, unloading) are the ones where the controller is
+           no longer ticking at all.
+         - MoveCloseTo returns false when a pathfind is already pending, and both call sites threw
+           that away AND committed their bookkeeping BEFORE calling. A refused request therefore
+           recorded the new leg as live while the old pathfind walked the character to the
+           destination we had just abandoned, with every recovery condition suppressed. The issue
+           site is now the commit point, and travel refuses to enter the block at all while a
+           pathfind is in flight - entering it would burn a Path.Stop that tears down the leg
+           currently walking, for a request that gets discarded.
+         - vnavmesh has ONE AsyncMoveRequest and ONE FollowPath for the whole process, so its
+           "is a path running" gates carry no request identity. Travel and CombatApproach both
+           asked "is a path running" while meaning "is MY path running", so a leftover travel path
+           convinced the approach it was already closing - the character ran hundreds of yalms
+           toward the old objective while the status said "closing on <mob>" and RSR fell back to
+           its ranged filler, which is the exact failure CombatApproach exists to prevent. A
+           NavClient owner is now recorded at the single point every request passes through.
+         - A dodge used Stop(), which threw away the snap, zeroed the leg and reset the stall and
+           repath clocks - so every mechanic silently defeated the repath throttle and pinned
+           RepathCount at 0. Dodges now Suspend(): the path genuinely stops (both BossMod forks
+           refuse to steer while vnav.PathIsRunning is set) but the destination survives and the
+           clocks are advanced past the pause. Resume is held for 400ms after the dodge signal
+           drops, because Reborn's AI.IsNavigating flaps at high frequency around a telegraph edge.
+
+         (F) PATHING: THE COMMITTED LEASH WAS APPLIED SYMMETRICALLY, so it also satisfied the
+         ENTRY test. A box that had once arrived and was then dragged clear - a chased fight, or
+         far more often a death and the corpse run from base camp - stopped travelling the instant
+         it came back within range + 30y and reported "At <objective>" while standing 40y+ outside
+         the arena. The leash is now one-way, and only engages as a return trip when nothing is
+         attacking (being pulled around by what you are fighting is what it exists to tolerate).
+         Related: there was NO death handling anywhere in the plugin, so a corpse run carried a
+         stale committed/arrived state across it. Added.
+
+         The change set was then adversarially re-reviewed against the real vnavmesh and Dalamud
+         source: 15 candidate regressions were raised and 14 refuted, the survivor being a
+         diagnostic defect of this build's own making - the "searching for N seconds" clock was
+         never reset on a successful connect, so a four-second reconnect after hours of healthy
+         farming would have rendered as "Searching for 7200s" plus the no-host setup advice, i.e.
+         it would have sent the user straight back to toggling the checkbox. Fixed before release.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the real magnitude of the snap drift for Bozja and Zadnor CE markers
+         cannot be measured offline, and it decides whether arriving at the snapped point still
+         registers you for an engagement - watch for the new "Arrived as close as the navmesh
+         allows - Ny from the marker centre" line and report any large N. The 400ms dodge-resume
+         tail and the backoff schedule are judgement calls. Phase A-C cannot be reproduced with
+         fewer than three boxes: host + one client passes the barrier cleanly either way.
+
+         Prior build - 1.0.11.0
+         (BossMod support: drive the ORIGINAL awgil BossMod as well as Reborn, and make the dodge
+         yield actually stop the vnavmesh path):
+         Requested: "Add in BossMod support." Since 1.0.1.0 the plugin has targeted BossMod Reborn
+         exclusively and reported the original awgil plugin as unsupported. Both are now driven,
+         auto-detected by InternalName (BossModReborn / BossMod), Reborn preferred when both are
+         loaded (which is itself broken - both register the same BossMod.* gates - and the
+         Dependencies tab now says so). Nothing about the fork is user-configured.
+         The forks differ far more than the commands, and every difference below was read from
+         both sources rather than assumed:
+         (1) THE ORIGINAL HAS NO AI SUBSYSTEM ANY MORE. AI/AIManager.cs, AIBehaviour, AIController do
+         not exist there. "AI mode" is AIConfig.Enabled, and RotationModuleManager.Update adds its
+         built-in "VBM Multibox" preset to the active list when it is on. That preset is only
+         AutoTarget + FollowSlot + NormalMovement (DefaultRotationPresets.json) - it has no class
+         module, so it cannot press buttons in the first place. So the guards for the original are:
+         AIConfig.ForbidActions = true (AutoTarget -> Passive; RSR owns targeting),
+         AIConfig.ForbidMovement = false (NormalMovement stays on Pathfind - that IS the dodging),
+         and Presets.ClearActive whenever a USER preset is in the active list.
+         (2) THE REBORN GUARD 3 IS HARMFUL THERE. RotationModuleManager only adds the AI preset
+         `if (_aiConfig.Enabled &amp;&amp; !Presets.Contains(ForceDisable))`, so Presets.SetForceDisabled
+         - which for Reborn stops the global autorotation and leaves the AI untouched - would in the
+         original remove the dodge engine along with everything else. It is deliberately not sent.
+         Worse, the original force-disables ITSELF on death in combat and on a ninja pull, which
+         would silently drop the dodging; the heartbeat now re-clears that whenever it appears.
+         (3) THE ORIGINAL HAS NONE OF THE AI.*/HINTS.* GATES. Its IPCProvider registers only
+         Presets.*, ObstacleMap.* and the Configuration console. So the original is driven through
+         BossMod.Configuration ("AIConfig Enabled/ForbidActions/ForbidMovement") - which is READABLE
+         as well as writable, so its heartbeat is read-before-write and touches nothing (no
+         Modified, no config save) when nothing drifted - and its multi-preset active list is
+         snapshotted with Presets.GetActiveList/SetActiveList (its GetActive only answers when
+         exactly one preset is active). "/vbm ai on|off" and "/vbm cfg" are the chat fallbacks;
+         the deprecated /vbmai alias is not used.
+         (4) BOTH FORKS YIELD TO A RUNNING VNAVMESH PATH. MovementOverride.RMIWalkDetour in both
+         computes movementAllowed with `&amp;&amp; !FollowPathActive()`, which reads vnavmesh's shared
+         "vnav.PathIsRunning" flag. Two consequences. (a) There is no movement contention with the
+         original despite it having no IsNavigating gate: it simply cannot move while we path, and
+         moves freely when we do not. (b) A REAL DEFECT IN THE EXISTING REBORN PATH: RunTravel and
+         RunIdle "yielded" to a dodge by returning without issuing a new path, but the path already
+         running was left running - so vnavmesh kept walking the character through the mechanic
+         while Reborn politely waited for the path to end. Both branches now call Movement.Stop();
+         TravelTo re-snaps and re-issues from wherever the dodge finished.
+         (5) THE ORIGINAL CLOSES ON THE TARGET ITSELF. FollowSlot.Execute has a fallback that adds
+         a goal zone around the player's hostile target whenever no other module has one (3y for
+         melee/tank, 25y otherwise) - the exact thing Reborn does NOT do solo, which is why
+         CombatApproach exists. With the original, CombatApproach now stands down entirely
+         (CombatDirector.AvoidanceOwnsApproach) - an approach path of ours would only make BossMod
+         yield and lose the dodge. The flip side: FollowSlot does not check combat or death, so a
+         target left over from the last fight would have the character walk to it during holds
+         (CE registration wait, idle spot). CombatDirector.Travel clears a hostile hard target for
+         the original only; RSR in Auto re-targets on Engage.
+         (6) FOUND IN THE REBORN PATH: the ForbidActions read-back passed ["cfg","AIConfig",...]
+         to BossMod.Configuration, but the console parser takes the NODE name first - "cfg" is
+         the chat subcommand, not part of the argument. It has always returned "Config type not
+         found", so ForbidActions was never restored on stop. Fixed; ForbidMovement is now
+         snapshotted and restored too. The gate is now typed List&lt;string&gt; (exact match on
+         Reborn; Dalamud JSON-converts it for the original's IReadOnlyList&lt;string&gt;).
+         UI: Dependencies names the fork, explains the reduced telemetry for the original, warns
+         when both are loaded; Settings > Combat describes both.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game, original fork only): that AIConfig.Modified fired by the console gate is
+         what pushes ForbidActions into the AI preset (AIWindow.ToggleTarget) - read from source, not
+         observed; that Presets.SetActiveList resolves the saved names on restore (falls back to
+         SetActive one at a time). Both forks: the yield fix means a dodge mid-route now costs a
+         re-pathfind; if IsNavigating flickers on a long mechanic the repath throttle absorbs it.
+
+         Prior build - 1.0.10.0
+         (Load failure: the constructor read the object table off the framework thread):
+         Reported: the plugin fails to load after a restart. From the Dalamud log -
+         System.InvalidOperationException: Not on main thread! at ObjectTable.get_LocalPlayer(),
+         thrown out of Plugin.SyncMultiboxLink at Plugin.cs:188, called from the constructor at
+         Plugin.cs:100. The constructor throwing means the plugin never finishes loading at all.
+         Dalamud builds plugin instances on a threadpool thread (ServiceContainer.CreateAsync), and
+         API 15 refuses object-table access anywhere but the framework thread. SyncMultiboxLink
+         reads LocalPlayer for the character name to announce over the pipe, so calling it from the
+         constructor was always going to throw.
+         NOT a regression from the last three builds - none of them touched this path. It stayed
+         hidden because the method returns early when multibox is disabled, before reaching the
+         read; enabling multibox is what makes the constructor reach line 188, and the next restart
+         then fails the load. Anyone who never turned multibox on would never have seen it.
+         The constructor call is simply removed: OnUpdate already calls SyncMultiboxLink every
+         frame on the framework thread, so it only ever bought one frame. The name read is now also
+         guarded on Framework.IsInFrameworkUpdateThread and degrades to "unknown" rather than
+         throwing - the client's reconnect loop re-sends the real name anyway, and no announced
+         name is worth taking the plugin down for.
+         Checked the rest of construction for the same class of defect: nothing else built before
+         the first tick touches the object table, ClientState or Condition.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the multibox pipe now starts on the first framework tick instead of during
+         construction. If a host and a client are launched at the same instant the HELLO exchange is
+         one frame later than before, which the reconnect loop already handles.
+
+         Prior build - 1.0.9.0
+         (Three field defects: the pathing stall loop, combat plugins silently dropping out, and melee never closing to its target):
+         Reported from the Southern Front: "running into walls and getting stuck", "not consistently
+         flipping on RSR or BMR", "SAM is frequently too far from enemies and just spams a ranged
+         attack." Three unrelated causes, all found by reading real source rather than guessing.
+
+         (1) THE REPATH LOOP WAS EATING ITSELF. Movement re-issued a path whenever vnavmesh
+         reported "not busy" - with no throttle and no memory. vnavmesh's AsyncMoveRequest reports
+         idle for a tick or two between finishing a pathfind and starting to follow it, and
+         permanently when the destination cannot be reached at all; its MoveTo also refuses
+         outright while a pathfind is already pending. So the old code ran Path.Stop plus a fresh
+         pathfind five times a second and the follower was torn down before it ever took a step -
+         the character stands still twitching while the repath counter climbs, which is exactly
+         "getting stuck". Retries of the same leg are now throttled to 750ms; a genuine leg change
+         still goes out immediately.
+         Worse, every one of those retries also reset the no-progress clock, so the stall branch
+         (the one that re-snaps the destination) could never fire. Progress tracking is now
+         separate from path issuing: real displacement clears the escalation, and repeated stalls
+         re-snap with a widening query extent instead of retrying the same unreachable point.
+         A stall while DETOURING previously did nothing at all - the re-snap was explicitly skipped
+         in that case, so a wedged detour retried the same wedged point forever. It now drops the
+         detour, suppresses that enemy for 30s so it is not immediately re-raised, and goes direct.
+         Walking past a mob beats standing in a wall.
+         And the destination was compared with exact Vector3 inequality against a live-read FATE
+         ring / engagement marker, so a millimetre of jitter counted as a brand-new destination
+         every tick - re-snapping, dropping the detour and restarting the stall clock each time.
+         Compared by distance now.
+         (2) RUNNING INTO WALLS SPECIFICALLY: THE DETOUR. The sidestep from 1.0.7.0 is computed in
+         open space and offset ~28y perpendicular, which in the Southern Front lands inside a
+         building or a cliff constantly. SnapToMesh always returns SOMETHING, so it was handing
+         back the nearest unrelated mesh - routinely the far side of the wall the point landed in -
+         and the run committed to it. A detour is now refused if snapping had to move it more than
+         5y, and again if the new Query.Mesh.IsPointOnMesh gate says it is not standable reachable
+         mesh. Refusing a detour just means travelling direct, which is the strictly better failure.
+         (3) THE COMBAT PLUGINS WERE LATCHED, NOT DRIVEN. EdgeTrigger recorded what we ASKED for and
+         never re-sent, but neither plugin can be asked what state it is in and both drop it
+         unprompted: BossMod Reborn's AIManager.Update calls SwitchToIdle() the moment the party
+         slot it follows stops being valid (a Bozja alliance does that constantly), and RSR's
+         IPCProvider has no state getter at all, so its own auto-cancel or the user touching
+         /rotation is invisible to us. Either way the latch said "already on" forever and the run
+         continued with no rotation and no dodging. EdgeTrigger now re-asserts on an interval
+         (Settings > Combat, default 5s, 0 disables), the re-assert is withheld while Reborn is
+         mid-dodge because /bmrai on runs SwitchToFollow and would tear down the behaviour it is
+         dodging with, and a fight starting forces one guaranteed resync.
+         Found while in there: UseRotationSolver was dead config. The checkbox existed and was read
+         nowhere, so unticking it did nothing and RSR was armed regardless. Now honoured.
+         (4) SAM AT RANGE: BOSSMOD REBORN NEVER CLOSES, AND ONLY ITS SOURCE SAYS SO. AIBehaviour
+         adds the follow-the-target goal zone inside `if (_followMaster)`, and _followMaster is
+         `master != player`. Solo - which is how this runner works - the master IS the player, so
+         that entire branch is dead. The fallback under it needs targeting.Target, which is only
+         populated when an AI preset is loaded, and we deliberately clear the preset
+         (AI.SetPreset("")) to keep Reborn from pressing buttons alongside RSR. Net result: Reborn
+         dodges and does nothing else, the character stands wherever travel left it, and RSR - with
+         a target it cannot reach - falls back to the ranged filler. That is Enpi on Samurai.
+         New Automation/CombatApproach.cs closes the gap over vnavmesh like all our other movement:
+         melee and tanks pulled to 2y inside the hitbox, everything else to 15y (job ids verified
+         against ClassJob.csv), never flying (an airborne character cannot attack), and yielding
+         completely whenever Reborn is steering. Approach and travel never hold vnavmesh at once.
+         (5) AND THE OTHER HALF OF THE SAME SYMPTOM: the FATE arrive range was radius*0.5, which on
+         a Bozja skirmish ring is 30y+ from the centre. "Arrived" fired that far out and armed the
+         rotation against mobs well outside melee range. Capped at 20y.
+         Closing on a mob then drags the character off the objective's centre, which would have
+         read as "no longer arrived" and handed movement back to travel - walking away from the mob
+         being hit and switching the rotation off on the way, forever. A committed objective now
+         holds through a 30y leash.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): if RSR's "show toggled setting in chat" is on, each re-assert prints a
+         line - turn that off in RSR or raise the interval. The 750ms repath throttle and the 5y
+         detour snap tolerance are judgement calls; Dependencies now shows what was last sent to
+         each plugin and how long ago, and travel status now names a genuine stuck state instead of
+         hanging silently.
+
+         Prior build - 1.0.8.0
+         (Travel: run through aggro instead of stopping to fight it):
+         Requested: "if en route to a location in Bozja and you get aggroed, it needs to not attack."
+         1.0.6.0 had added the opposite - RunDefend stopped the run, dismounted and armed RSR the
+         moment any hostile targeted the character - and that is now off by default. Bozja and Zadnor
+         pull things onto the route constantly, so answering each one turns a single run into a
+         string of fights that earn nothing and burn the registration window we were travelling to
+         make.
+         Configuration.DefendWhenAttacked (bool) is replaced by TravelAggroResponse
+         {KeepRunning, FightBack}, defaulting to KeepRunning. No config migration is needed or
+         written: the removed key is simply ignored on load and the new field defaults to the
+         wanted behaviour, so existing installs pick it up without touching their saved settings.
+         WHAT ACTUALLY STOPS THE ATTACKING is that CombatDirector.Travel is what runs for the whole
+         route, and it calls Rotation.Disengage - RSR is held in Off, so nothing selects a target or
+         presses anything. BossMod Reborn stays live for dodging but is already in avoidance-only
+         mode (ForbidActions on, no AI preset, global autorotation force-disabled), so it presses
+         nothing either. Nothing else in the plugin hard-targets, and the Lost Action holster only
+         ticks from the engagement paths. The character runs and the mobs leash off.
+         SCOPED TO THE ROUTE, DELIBERATELY. The threat check now also reads whether we have arrived,
+         and standing AT the objective still fights back regardless of the setting: there is nowhere
+         further to run, and a Critical Engagement's registration window has to be waited out where
+         you stand, so the alternative is being beaten to death in the registration circle with the
+         rotation off. That case behaves exactly as it did before this build.
+         The aggro-avoidance scan still skips enemies already targeting us - routing around
+         something that is chasing you achieves nothing, it follows - but it keeps avoiding the ones
+         that have NOT noticed us, which is what stops a chase from collecting a second and third
+         mob on the way. Its comment claiming RunDefend owns those was left stale by this change and
+         is corrected.
+         Travel status now names the chase ("outrunning 2 attackers, not stopping to fight"),
+         because a character visibly in combat and deliberately not retaliating otherwise reads as
+         a broken rotation.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): you cannot mount in combat, so a chase drops the run to on-foot speed until
+         the mob leashes. Whether that is faster than just killing it depends on what is chasing -
+         if heavy pursuers routinely follow the whole way, switch Settings > Engagements to "Stop
+         and fight back". The 30y attacker radius in Threat.cs is unchanged.
+
+         Prior build - 1.0.7.0
+         (Enemy aggro avoidance: route around enemy sight cones while travelling, so the run stops walking into packs that can one-shot it):
+         Requested: running fate to fate in Bozja drags the route through field mobs that can
+         delete the character, so avoid them by field of view.
+         Combat avoidance (BossMod Reborn) cannot help here - by the time anything is telegraphed
+         you are already tagged - so this happens at the PATHING layer instead: do not enter the
+         cone at all. New Automation/AggroAvoidance.cs models FFXIV aggro the way the game actually
+         does it, as a forward SIGHT cone plus a smaller all-round PROXIMITY ring. That two-part
+         model is the point: passing BEHIND an enemy is safe at a distance that would pull it
+         head-on, so cone-aware routing gets through gaps a flat keep-out radius would refuse.
+         Movement now samples the straight route for the first enemy footprint it would walk into
+         and, if blocked, routes via a perpendicular detour placed on the opposite side to that
+         enemy, offset by its outer radius plus a clearance margin. The detour is snapped to the
+         navmesh and then RE-CHECKED - snapping can drag the point back into the cone it was meant
+         to dodge, and committing to that would just walk into the enemy by a longer route. A
+         detour is a single step, dropped on arrival and re-evaluated, which is what lets it chain
+         around several enemies in sequence without any multi-waypoint planning.
+         Skipped entirely while actually airborne, since ground enemies cannot reach a flying
+         character and detouring would be wasted travel. Enemies within 25y of the destination are
+         ignored - those are the objective's own mobs and routing around them means never arriving.
+         Enemies already targeting us are also ignored; RunDefend owns those.
+         Evaluation is throttled to 1s rather than run per tick: it walks the object table and
+         samples the route, and re-deciding five times a second would also make the character waver
+         between two routes.
+         The level threshold defaults to 0 (avoid every hostile enemy, the safe default while
+         travelling). Settings > Movement lists nearby hostiles with the levels the game ACTUALLY
+         reports, so the threshold can be set from observation instead of from an assumption about
+         what Bozja mobs read as - which is deliberately not hardcoded here.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the default sight radius (22y), cone (120 deg) and proximity ring (10y) are
+         reasonable general FFXIV values, not measured Bozja ones - all four are sliders. If the run
+         still pulls things, widen them; if it detours constantly through open ground, narrow them
+         or raise the level threshold using the nearby-enemy readout.
+
+         Prior build - 1.0.6.0
+         (Targeting: fight back when aggroed instead of running to the next skirmish, and stop abandoning the current objective mid-fight):
+         Reported: "when another fate is up it prioritises running to the next fate instead of
+         attacking aggroed mobs." Two independent causes, both fixed.
+         (1) THE ROTATION IS OFF WHILE TRAVELLING. CombatDirector.Travel calls Rotation.Disengage
+         by design (we do not want RSR pulling things en route), but nothing ever turned it back
+         on for mobs that aggroed onto us, so the character ran across the zone being beaten on and
+         never retaliated. RunTravel now checks for attackers FIRST and hands off to a new
+         RunDefend: stop, dismount (you cannot fight mounted), arm the rotation, clear them, then
+         resume travel on the next tick. Keyed on hostiles actually targeting the player (new
+         Automation/Threat.cs) rather than ConditionFlag.InCombat, which lingers after the last mob
+         dies and would make the runner stop for phantom fights.
+         (2) THE OBJECTIVE WAS RE-RANKED EVERY TICK. ResolveObjective ran the selector from scratch
+         each pass with no hysteresis, so a newly spawned skirmish that ranked higher - a lower id
+         in deterministic/multibox mode, or simply a nearer one solo - immediately became the new
+         target and the character walked out of the fight it was in. Added stickiness: a committed
+         objective is kept while it is still worth doing (skirmish still running and incomplete;
+         engagement still registering with enough margin to arrive), and only then is a fresh pick
+         made. The multibox host re-broadcasts the sticky objective so followers do not diverge.
+         Both are on by default and independently toggleable in Settings > Engagements.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): the 30y attacker radius is a judgement call - far enough to catch what is
+         actually on you, close enough that a mob you have already outrun does not hold the run up.
+
+         Prior build - 1.0.5.0
+         (Idle staging: wait at a configured spot in the working zone instead of standing where the last fight ended; seeded with Zadnor Z3 (16.1, 14.7)):
+         Requested: in Zadnor, when nothing is up in Z3, wait at map (16.1, 14.7).
+         The controller previously just stopped wherever the last objective left it, which in
+         Zadnor is frequently the wrong plateau - and since the plateaus are far apart, starting
+         the next run from there costs most of the registration window.
+         New RunIdle: with no objective, travel to the staging point for the region actually being
+         worked (the farm/zone restriction if set, else the current region) and hold. Dodging still
+         wins over repositioning. Falls back to holding position when no spot is configured for
+         that region, so the behaviour is opt-in per region rather than forced.
+         New Game/MapCoords.cs converts the two-decimal map coordinates players read off the map
+         to world space, reading SizeFactor/OffsetX/OffsetY from the Map sheet rather than assuming
+         them. The requested point resolves to world (-268.7, -338.7); as a cross-check that both
+         the conversion AND the previously-derived Z3 anchor are right, it lands 95y from the
+         Northern Plateau's own map label anchor and 650y+ from the other two plateaus'.
+         Map coordinates carry no altitude, so the point is dropped onto the navmesh from above via
+         a new NavmeshIpc.ResolveGroundPoint - seeding Y at 0 is the classic trap, since it sits
+         below the terrain and makes every nearest-point query reject the floor.
+         Configurable per region in Settings > Movement, with a "Here" button that captures the
+         character's current position, and a resolved-position cache dropped on edit or zone change.
+         Compile-verified Debug and Release (0 warnings).
+         SEAM (in-game): that the resolved point is somewhere the character can actually stand and
+         path to - it is snapped to the navmesh, but the spot's suitability as a staging position is
+         the user's call.
+
+         Prior build - 1.0.4.0
+         (Build-version discipline: adopt Relicable's bump-and-changelog convention, and backfill the four builds that predate it):
+         The project had sat at 1.0.0.0 across four substantive builds, so a reloading dev
+         plugin could not tell them apart. Adopted Relicable's convention: third-component bump
+         per change, a changelog entry naming what moved and why, and a compile-verify in both
+         Debug and Release before hand-back. The four prior builds are reconstructed below from
+         what actually shipped in each - they were built and verified at the time, but not
+         versioned, so the numbering is assigned retroactively and honestly rather than
+         pretending the history was tracked all along. No functional change in this build.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.3.0
+         (Travel: actually mount, and stop handing vnavmesh flight paths a grounded character cannot follow; plus a work-zone picker):
+         Two things, one of them a real defect.
+         (1) THE PLUGIN NEVER MOUNTED. vnavmesh has no mount IPC - summoning a mount is the
+         orchestrator's job and it was simply missing, so the character jogged the entire map on
+         foot. Worse, Movement passed fly:AllowFlight unconditionally; handing vnavmesh a 3D
+         flight path while the character is grounded and unmounted gives it a route it physically
+         cannot follow and it stalls partway. New Automation/Mount.cs mounts past 30y (Mount
+         Roulette, GeneralAction 9 - verified against GeneralAction.csv), passes the ACTUAL
+         airborne state (ConditionFlag.InFlight) as the fly flag, and dismounts (GeneralAction 23)
+         before combat. The controller now refuses to arm RSR until grounded, because you cannot
+         attack from a mount and arming early just looks like "RSR is doing nothing".
+         Established while investigating the request for teleporting: neither Bozja nor Zadnor has
+         a single row in the Aetheryte sheet, so there is NO in-zone teleport network of any kind.
+         Mount travel is the fast travel; there is nothing faster to reach for.
+         (2) WORK-ZONE PICKER next to Start: Anywhere / Z1 / Z2 / Z3. Stores the number so one
+         choice carries across both field zones, with labels adapting to the zone you are in. A
+         selected farm material takes precedence (it pins region AND activity) and the picker
+         shows as locked, so the two can never silently contradict into an empty selection.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.2.0
+         (Zone/region distinction, which the relic materials are gated on):
+         Both field zones are split into three named regions and the relic materials are
+         region-specific, so farming the wrong third yields nothing. Added FieldRegion.cs
+         (PlaceName ids from PlaceName.csv: Bozja 3536/3537/3538, Zadnor 3668/3669/3670; the
+         Z-numbering confirmed by map-marker north-south ordering and the relic wiki's own
+         "(Zone 1/2/3)" labels) and ZoneDrops.cs mapping each field-farmed material to its region.
+         Zadnor carries a SECOND axis the request did not mention and that matters just as much:
+         within one plateau, skirmishes and Critical Engagements drop DIFFERENT items, so the
+         selector filters on activity as well as region.
+         Current region is read exactly from TerritoryInfo.AreaPlaceNameId / SubAreaPlaceNameId.
+         An objective's region is LEARNED - nothing ships a CE-to-region table, so the first time
+         the character stands at one the reported region is recorded and persisted, permanently
+         superseding the positional estimate used before that. Chosen over shipping a hand-built
+         table because no source available here could verify one, and 30 confidently-wrong entries
+         would have been worse than an honest estimate that self-corrects.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.1.0
+         (Target BossMod Reborn exclusively, and stop stomping the user's BossMod settings):
+         Switched from fork-agnostic detection to BossMod Reborn only (InternalName BossModReborn,
+         commands /bmr and /bmrai). The original awgil plugin now reports unavailable with a clear
+         reason rather than half-working, because the two differ in exactly the places this code
+         touches. Committing to one fork bought a third avoidance guard the original cannot
+         express: AI.SetPreset("") clears the AI's OWN rotation preset, independent of the global
+         autorotation preset, so BossMod dodges while pressing nothing.
+         Also fixed two defects found while in there. (a) Force-disabling BossMod's autorotation
+         stomped whatever preset the user had active and never put it back; the prior autorotation
+         preset, AI preset and ForbidActions value are now snapshotted (the last read back through
+         the BossMod.Configuration console gate) and restored on stop, zone-out and dispose.
+         (b) ReapplyAvoidanceConfigEachFight was dead config - it had a checkbox and was never
+         read. Now wired in, and gated on a fight EDGE, because Engage() runs every controller
+         tick and a naive implementation would have fired three chat commands five times a second.
+         Compile-verified Debug and Release (0 warnings).
+
+         Prior build - 1.0.0.0
+         (Initial build: the orchestrator, multibox, and Resistance relic tracking):
+         Bozja/Zadnor field-operation orchestrator built from the Engineering Track research doc.
+         Combat runs as a ROLE SPLIT rather than an either/or backend: BossMod for AoE avoidance
+         only, RSR for rotations, with the controller yielding its vnavmesh pathing whenever
+         BossMod is actively dodging (a dodge overridden by a travel path is a death).
+         Multibox coordination over a local named pipe, host/client, modelled on AutoDuty's
+         MultiboxUtility. Target selection is deliberately distance-blind in multibox mode - a
+         distance-ranked pick is exactly how two boxes end up in two places - so boxes converge on
+         the same objective even with the pipe down.
+         Resistance relic tracking, relic items only (no fragments), reading quest state from
+         QuestManager and counts from InventoryManager, nothing cached.
+         Four claims in the source research document were found wrong against real source and
+         built against the verified behaviour instead: Presets.Create takes a serialized preset
+         rather than a name; StateCommandType has seven members, not five; there is no "AI on/off"
+         IPC; and Part B was not "partially mapped" - every Bozja struct it flagged is fully
+         defined in current FFXIVClientStructs, including a UseFromHolster member function that
+         removes all ActionManager duty-slot guesswork.
+         [WRONG, corrected in 1.0.21.0 - see the top of this file. For an action-type entry
+         UseFromHolster LOADS a duty slot and presses nothing; the doc comment says "into specified
+         duty action slot". This sentence is what HolsterDriver was built on.]
+         Compile-verified Debug and Release (0 warnings).
+    -->
+    <Version>1.0.28.0</Version>
+    <AssemblyVersion>1.0.28.0</AssemblyVersion>
+    <FileVersion>1.0.28.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ECommons supplies Svc, NeoTaskManager, EzThrottler and the chat/command helpers.
+         Points at the local clone the other plugins on this machine build against. -->
+    <ProjectReference Include="..\..\ZodiacRedone\ECommons\ECommons\ECommons.csproj" />
+  </ItemGroup>
+
+</Project>

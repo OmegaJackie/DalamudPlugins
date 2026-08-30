@@ -5,3 +5,7 @@ desktop.ini
 *.user
 .vs/
 .idea/
+
+# Build output from plugins/ sources (dist/*.zip is the published artifact)
+bin/
+obj/

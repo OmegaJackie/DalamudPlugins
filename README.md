@@ -38,6 +38,18 @@ Two hosting styles, because two of these already have their own release pipeline
   (CineSync's zip is ~92 MB, which is well past what belongs in git anyway.)
 - **Everything else** is built here and committed to `dist/`, served over raw links.
 
+Source for the three plugins written from scratch — **Bozja Buddy Reborn**, **Line Me Up** and
+**SellJunk** — lives in this repo under `plugins/`. The two forks keep their own repos so they can
+still pull from upstream: [PlayerTrack-IPC](https://github.com/OmegaJackie/PlayerTrack-IPC) and
+[ChatAnywhere-FL](https://github.com/OmegaJackie/ChatAnywhere-FL).
+
+```
+plugins/            source for the plugins written here
+dist/               built zips, served over raw links
+tools/sources.json  the file you edit
+pluginmaster.json   generated, never hand-edited
+```
+
 `pluginmaster.json` is generated, not hand-edited. `tools/sources.json` is the file you actually
 change.
 
@@ -71,3 +83,15 @@ Add an entry to `tools/sources.json` and re-run the script.
 
 For one that has its own repo and releases, use `"Hosted": "external"` with a `Manifest` URL
 pointing at that repo's `repo.json` and a `ReleaseRepo` of `owner/name`.
+
+## Licensing
+
+Licensed per plugin rather than repo-wide, because the forks carry their upstream authors'
+copyright and this repo also serves their built binaries.
+
+| Plugin | License | Copyright |
+|---|---|---|
+| Bozja Buddy Reborn, Line Me Up, SellJunk | MIT — see `plugins/<name>/LICENSE` | OmegaJackie |
+| PlayerTrack | MIT | Infi, kalilistic — see [upstream](https://github.com/Infiziert90/PlayerTrack) |
+| Relicable | MIT | NightmareXIV |
+| ChatAnywhere | none stated upstream | [twelvehouse](https://github.com/twelvehouse/ChatAnywhere) |
