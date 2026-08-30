@@ -38,10 +38,14 @@ Two hosting styles, because two of these already have their own release pipeline
   (CineSync's zip is ~92 MB, which is well past what belongs in git anyway.)
 - **Everything else** is built here and committed to `dist/`, served over raw links.
 
-Source for the three plugins written from scratch — **Bozja Buddy Reborn**, **Line Me Up** and
-**SellJunk** — lives in this repo under `plugins/`. The two forks keep their own repos so they can
-still pull from upstream: [PlayerTrack-IPC](https://github.com/OmegaJackie/PlayerTrack-IPC) and
+Source for the first-party plugins lives in this repo under `plugins/`: **Bozja Buddy Reborn**,
+**Line Me Up**, **SellJunk** and **AutoFATE**. The two forks keep their own repos so they can still
+pull from upstream: [PlayerTrack-IPC](https://github.com/OmegaJackie/PlayerTrack-IPC) and
 [ChatAnywhere-FL](https://github.com/OmegaJackie/ChatAnywhere-FL).
+
+**AutoFATE is source-only.** It has no entry in `tools/sources.json`, so it isn't built here, isn't
+in `dist/`, and doesn't show up in the plugin installer — the code is here to be version-controlled,
+not yet published.
 
 ```
 plugins/            source for the plugins written here
@@ -95,3 +99,4 @@ copyright and this repo also serves their built binaries.
 | PlayerTrack | MIT | Infi, kalilistic — see [upstream](https://github.com/Infiziert90/PlayerTrack) |
 | Relicable | MIT | NightmareXIV |
 | ChatAnywhere | none stated upstream | [twelvehouse](https://github.com/twelvehouse/ChatAnywhere) |
+| AutoFATE | BSD 3-Clause — see `plugins/AutoFATE/LICENSE.md` | Puni.sh — rebuild of [Jaksuhn/ffxiv-bundleoftweaks](https://github.com/Jaksuhn/ffxiv-bundleoftweaks) |

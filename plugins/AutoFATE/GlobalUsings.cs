@@ -1,0 +1,16 @@
+global using AutoFATE.CLib.Enums;
+global using AutoFATE.CLib.Extensions;
+global using AutoFATE.CLib.Internal;
+global using AutoFATE.CLib.Services;
+global using AutoFATE.CLib.TaskSystem;
+global using AutoFATE.CLib.Utils;
+global using Dalamud.Game.Addon.Lifecycle;
+global using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+global using Dalamud.Game.ClientState.Conditions;
+global using Dalamud.Interface.Utility;
+global using Dalamud.Plugin.Services;
+global using System;
+global using System.Collections.Generic;
+global using System.Linq;
+global using System.Numerics;
+global using Sheets = Lumina.Excel.Sheets;

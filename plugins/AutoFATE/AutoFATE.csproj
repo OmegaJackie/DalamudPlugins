@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+    <PropertyGroup>
+        <Version>1.0.0</Version>
+        <LangVersion>preview</LangVersion>
+        <GenerateErrorForMissingTargetingPacks>false</GenerateErrorForMissingTargetingPacks>
+
+        <Author>Jackie</Author>
+        <Name>AutoFATE</Name>
+        <InternalName>AutoFATE</InternalName>
+        <Punchline>Automated FATE grinding — RSR fights, BossMod dodges, vnavmesh walks.</Punchline>
+        <Description>Standalone rebuild of the Date With Destiny / Fate Tool Kit module from ffxiv-bundleoftweaks. Combat rotation by Rotation Solver Reborn, AoE avoidance and targeting by BossMod (Reborn), pathing by vnavmesh. Requires vnavmesh, BossMod Reborn, Rotation Solver Reborn, and TextAdvance.</Description>
+        <RepoUrl>https://github.com/Jaksuhn/ffxiv-bundleoftweaks</RepoUrl>
+        <Tags>automation fate</Tags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="ECommons" Version="3.2.1.15" />
+    </ItemGroup>
+</Project>
