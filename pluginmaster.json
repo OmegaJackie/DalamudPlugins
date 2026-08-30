@@ -90,7 +90,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119417,
+        "LastUpdate":  1788121793,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip"
@@ -119,7 +119,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119424,
+        "LastUpdate":  1788121802,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip"
@@ -148,7 +148,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119426,
+        "LastUpdate":  1788121804,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/BozjaBuddyReborn.zip"
@@ -178,7 +178,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119428,
+        "LastUpdate":  1788121805,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/LineMeUp.zip"
@@ -208,7 +208,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119429,
+        "LastUpdate":  1788121807,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/SellJunk.zip"
@@ -219,7 +219,7 @@
         "InternalName":  "AutoFATE",
         "AssemblyVersion":  "1.0.0.0",
         "Description":  "Standalone rebuild of the Date With Destiny / Fate Tool Kit module from ffxiv-bundleoftweaks. Combat rotation by Rotation Solver Reborn, AoE avoidance and targeting by BossMod (Reborn), pathing by vnavmesh. Requires vnavmesh, BossMod Reborn, Rotation Solver Reborn, and TextAdvance.",
-        "Punchline":  "Automated FATE grinding â€” RSR fights, BossMod dodges, vnavmesh walks.",
+        "Punchline":  "Automated FATE grinding — RSR fights, BossMod dodges, vnavmesh walks.",
         "ApplicableVersion":  "any",
         "DalamudApiLevel":  15,
         "Tags":  [
@@ -237,7 +237,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788119431,
+        "LastUpdate":  1788121808,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/AutoFATE.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/AutoFATE.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/AutoFATE.zip"

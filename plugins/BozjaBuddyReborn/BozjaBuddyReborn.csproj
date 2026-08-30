@@ -1599,4 +1599,11 @@
     <ProjectReference Include="..\..\..\ZodiacRedone\ECommons\ECommons\ECommons.csproj" />
   </ItemGroup>
 
+
+    <ItemGroup>
+        <!-- Shipped inside the release zip: ECommons.dll is MIT and its notice must
+             travel with the binary. DalamudPackager packs the plugin output dir. -->
+        <None Include="LICENSE"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+        <None Include="THIRD-PARTY-NOTICES.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+    </ItemGroup>
 </Project>

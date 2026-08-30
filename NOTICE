@@ -1,0 +1,32 @@
+Jackie's Dalamud Plugins
+Copyright (c) 2026 OmegaJackie
+
+The MIT license in LICENSE covers this repository's own content: the tooling in
+tools/, the manifest generator, the documentation, and the first-party plugin
+source under plugins/ EXCEPT where a plugin directory carries its own license
+file. LICENSE and this NOTICE belong together; the carve-outs below are what
+keep the root license from reading as a claim over other people's work.
+
+It does NOT cover:
+
+  plugins/AutoFATE/
+      BSD 3-Clause, Copyright (c) 2023 Puni.sh, with modifications
+      Copyright (c) 2026 OmegaJackie. See plugins/AutoFATE/LICENSE.md.
+      A rebuild of the Fate Tool Kit module from Jaksuhn/ffxiv-bundleoftweaks,
+      vendoring a trimmed copy of that project's clib framework under CLib/.
+
+  dist/PlayerTrack.zip
+      A build of OmegaJackie/PlayerTrack-IPC, a fork of Infiziert90/PlayerTrack.
+      MIT, Copyright (c) 2025 Infi, kalilistic.
+
+  dist/ChatAnywhere.zip
+      A build of OmegaJackie/ChatAnywhere-FL, a fork of twelvehouse/ChatAnywhere.
+      Upstream states no license. See the Licensing section of README.md.
+
+  ECommons.dll, bundled inside dist/BozjaBuddyReborn.zip and dist/AutoFATE.zip
+      MIT, Copyright (c) 2023 NightmareXIV.
+      <https://github.com/NightmareXIV/ECommons>
+      See the THIRD-PARTY-NOTICES.md in each of those plugin directories.
+
+Relicable and CineSync are advertised by this repository but are not built or
+stored here; each lives in its own repository under its own license.

@@ -17,4 +17,11 @@
     <ItemGroup>
         <PackageReference Include="ECommons" Version="3.2.1.15" />
     </ItemGroup>
+
+    <ItemGroup>
+        <!-- Shipped inside the release zip: ECommons.dll is MIT and its notice must
+             travel with the binary. DalamudPackager packs the plugin output dir. -->
+        <None Include="LICENSE.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+        <None Include="THIRD-PARTY-NOTICES.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+    </ItemGroup>
 </Project>

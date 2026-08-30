@@ -91,17 +91,28 @@ pointing at that repo's `repo.json` and a `ReleaseRepo` of `owner/name`.
 
 ## Licensing
 
-Licensed per plugin rather than repo-wide, because the forks carry their upstream authors'
-copyright and this repo also serves their built binaries.
+The repository's own content — the tooling, the manifest generator, the docs and the first-party
+plugin source — is MIT, Copyright (c) 2026 OmegaJackie. See [LICENSE](LICENSE).
 
-Relicable and CineSync are original work; Relicable vendors NightmareXIV's ECommons (MIT) inside
-its own repo, which is that library's license, not Relicable's.
+Everything the root MIT does **not** reach is listed in [NOTICE](NOTICE): AutoFATE's own BSD
+license, the two forks whose built zips are served from `dist/`, and the third-party `ECommons.dll`
+bundled inside two of the plugin zips. `LICENSE` and `NOTICE` belong together — the carve-outs are
+what stop the root license reading as a claim over other people's work.
 
 | Plugin | License | Copyright |
 |---|---|---|
-| Bozja Buddy Reborn, Line Me Up, SellJunk | MIT — see `plugins/<name>/LICENSE` | OmegaJackie |
-| PlayerTrack | MIT | Infi, kalilistic — see [upstream](https://github.com/Infiziert90/PlayerTrack) |
+| Bozja Buddy Reborn, Line Me Up, SellJunk | MIT — `plugins/<name>/LICENSE` | OmegaJackie |
+| AutoFATE | BSD 3-Clause — `plugins/AutoFATE/LICENSE.md` | Puni.sh (2023), OmegaJackie (2026) |
 | Relicable | AGPL-3.0 | OmegaJackie |
 | CineSync | none stated | OmegaJackie |
+| PlayerTrack | MIT | Infi, kalilistic — [upstream](https://github.com/Infiziert90/PlayerTrack) |
 | ChatAnywhere | none stated upstream | [twelvehouse](https://github.com/twelvehouse/ChatAnywhere) |
-| AutoFATE | BSD 3-Clause — see `plugins/AutoFATE/LICENSE.md` | Puni.sh — rebuild of [Jaksuhn/ffxiv-bundleoftweaks](https://github.com/Jaksuhn/ffxiv-bundleoftweaks) |
+
+Bozja Buddy Reborn and AutoFATE bundle NightmareXIV's
+[ECommons](https://github.com/NightmareXIV/ECommons) (MIT) as `ECommons.dll` in their zips; each
+carries the required notice in its own `THIRD-PARTY-NOTICES.md`. Relicable also builds against
+ECommons, but does not vendor it — it is cloned in at build time and gitignored there.
+
+Relicable's `RelicBurstRotations` incorporates LGPL-3.0 portions from
+[RotationSolverReborn](https://github.com/FFXIV-CombatReborn/RotationSolverReborn); that repository
+records the detail in its own `NOTICE.md`.

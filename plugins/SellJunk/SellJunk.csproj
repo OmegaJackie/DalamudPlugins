@@ -22,4 +22,8 @@
     <FileVersion>1.0.0.0</FileVersion>
   </PropertyGroup>
 
+
+    <ItemGroup>
+        <None Include="LICENSE"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></None>
+    </ItemGroup>
 </Project>

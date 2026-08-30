@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $distDir  = Join-Path $repoRoot 'dist'
-$config   = Get-Content (Join-Path $PSScriptRoot 'sources.json') -Raw | ConvertFrom-Json
+$config   = Get-Content (Join-Path $PSScriptRoot 'sources.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 
@@ -79,7 +79,7 @@ function Get-DistEntry {
 
     Copy-Item $zip (Join-Path $distDir "$name.zip") -Force
 
-    $m    = Get-Content $manifest -Raw | ConvertFrom-Json
+    $m    = Get-Content $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
     $link = "$($config.RawBase)/$name.zip"
 
     $entry = [ordered]@{
