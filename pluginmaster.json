@@ -55,8 +55,8 @@
         "CategoryTags":  [
                              "utility"
                          ],
-        "AssemblyVersion":  "0.1.2.0",
-        "Changelog":  "Gizmo no longer leaks clicks to the game (stops FFXIV menu sounds while editing a screen).",
+        "AssemblyVersion":  "0.2.0.0",
+        "Changelog":  "Depth occlusion: screens now draw as real world geometry depth-tested against the game scene, so characters, walls and props in front of a screen correctly hide it instead of being painted over. Toggle it under Rendering, or /cinesync flat; falls back to the old flat overlay automatically if it cannot start.",
         "ApplicableVersion":  "any",
         "DalamudApiLevel":  15,
         "IsHide":  false,
@@ -71,7 +71,7 @@
         "Author":  "Infi, kalilistic",
         "Name":  "PlayerTrack",
         "InternalName":  "PlayerTrack",
-        "AssemblyVersion":  "3.6.1.0",
+        "AssemblyVersion":  "3.6.1.1",
         "Description":  "PlayerTrack helps you keep a record of who you meet and the content you played together.\nOrganize players into categories, keep notes, and track them across name/world changes.\nCustomization options include colors, icons, nameplates, and alerts.",
         "Punchline":  "Keep track of players you meet.",
         "ApplicableVersion":  "any",
@@ -90,7 +90,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788129151,
+        "LastUpdate":  1790423489,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/PlayerTrack.zip"
@@ -99,7 +99,7 @@
         "Author":  "twelvehouse",
         "Name":  "ChatAnywhere",
         "InternalName":  "ChatAnywhere",
-        "AssemblyVersion":  "1.4.0.1",
+        "AssemblyVersion":  "1.5.0.1",
         "Description":  "Features:\n- Real-time chat streaming via Server-Sent Events\n- Supports all channel types: FC, LS/CWLS 1-8, Party, Tell, Say, Shout, Yell, Alliance, and more\n- Custom filters with drag-and-drop reordering, unread badges, and default send channels\n- Tell mode with pin support and recent DM history\n- Send queue: brief countdown after pressing Send so you can cancel accidental sends (opt-in)\n- Emote picker with search and recently used, and FFXIV symbol picker\n- Link previews for trusted sites (Lodestone, YouTube, Twitter/X, Twitch, and more)\n- Appearance customisation: Light and Dark themes, Google Fonts, font size, coloured message backgrounds\n- Passcode authentication for browser access",
         "Punchline":  "Host your chat on a web server so you can talk from anywhere.",
         "ApplicableVersion":  "any",
@@ -119,7 +119,7 @@
         "IsHide":  false,
         "IsTestingExclusive":  false,
         "AcceptsFeedback":  true,
-        "LastUpdate":  1788129172,
+        "LastUpdate":  1790423530,
         "DownloadLinkInstall":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
         "DownloadLinkUpdate":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip",
         "DownloadLinkTesting":  "https://github.com/OmegaJackie/DalamudPlugins/raw/main/dist/ChatAnywhere.zip"
