@@ -17,7 +17,7 @@ Everything below then shows up in the normal plugin installer.
 
 | Plugin | What it does |
 |---|---|
-| **Relicable** | Automates the ARR Zodiac relic line. Early alpha, needs an access code. |
+| **Relicable** | Automates the ARR Zodiac relic line. Testing-exclusive: enable testing builds to see it. |
 | **CineSync** | Self-hosted synced in-world media screens for movie nights. |
 | **PlayerTrack** | Keep a record of who you meet and the content you played together. Fork of [Infiziert90/PlayerTrack](https://github.com/Infiziert90/PlayerTrack) with an IPC surface. |
 | **ChatAnywhere** | Read and send FFXIV chat from a web browser. Fork of [twelvehouse/ChatAnywhere](https://github.com/twelvehouse/ChatAnywhere). |
